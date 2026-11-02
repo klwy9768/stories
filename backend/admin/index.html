@@ -1,0 +1,1380 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stories 管理后台</title>
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; background: #f5f5f5; color: #222; }
+  .hidden { display: none !important; }
+  #login { max-width: 360px; margin: 120px auto; background: #fff; padding: 32px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,.08); }
+  #login h1 { font-size: 20px; margin: 0 0 20px; }
+  input, textarea, select { width: 100%; padding: 8px 10px; border: 1px solid #ddd; border-radius: 8px; font-size: 14px; font-family: inherit; background: #fff; }
+  textarea { min-height: 70px; resize: vertical; }
+  button { padding: 8px 16px; border: 0; border-radius: 8px; background: #07c160; color: #fff; font-size: 14px; cursor: pointer; }
+  button.gray { background: #888; }
+  button.red { background: #e74c3c; }
+  button.small { padding: 4px 10px; font-size: 12px; }
+  button:disabled { opacity: .5; cursor: default; }
+  #app { display: flex; min-height: 100vh; }
+  #side { width: 170px; background: #2e2e2e; color: #ccc; padding: 16px 0; flex-shrink: 0; }
+  #side h1 { font-size: 16px; color: #fff; padding: 0 16px 12px; margin: 0; }
+  #side a { display: block; padding: 10px 16px; color: #ccc; text-decoration: none; font-size: 14px; cursor: pointer; }
+  #side a.active { background: #07c160; color: #fff; }
+  #main { flex: 1; padding: 20px; max-width: 1080px; }
+  .card { background: #fff; border-radius: 10px; padding: 16px; margin-bottom: 14px; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+  .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+  .row > * { flex: 0 0 auto; }
+  .grow { flex: 1 1 auto !important; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .grid3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  label.f { display: block; font-size: 12px; color: #666; margin: 8px 0 3px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid #eee; vertical-align: middle; }
+  th { color: #888; font-weight: 500; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 12px; }
+  .tag.ok { background: #e8f8ee; color: #07c160; }
+  .tag.err { background: #fdecea; color: #e74c3c; }
+  .tag.wait { background: #fff6e5; color: #e6a23c; }
+  .msg { max-height: 420px; overflow: auto; background: #fafafa; border-radius: 8px; padding: 10px; font-size: 13px; }
+  .msg .m { margin: 4px 0; }
+  .msg .u { color: #07c160; }
+  .msg .c { color: #333; }
+  .hint { font-size: 12px; color: #999; }
+  .toast { position: fixed; top: 16px; right: 16px; background: #333; color: #fff; padding: 10px 16px; border-radius: 8px; z-index: 99; font-size: 13px; }
+  img.thumb { width: 40px; height: 40px; border-radius: 8px; object-fit: cover; background:#eee; }
+  .swatches img { width: 90px; height: 60px; border-radius: 6px; object-fit: cover; margin: 4px; border: 2px solid transparent; cursor: pointer; }
+  .swatches img.sel { border-color: #07c160; }
+@media (max-width: 780px) {
+  /* 手机端适配（管理台 App / 手机浏览器）：
+     侧栏变成顶部横向滚动条，表格横向滚动，输入框与按钮更适合手指点按 */
+  #app, #wrap, body > div { flex-direction: column; }
+  #side { width: 100%; display: flex; overflow-x: auto; padding: 6px 4px; gap: 4px; }
+  #side h1 { display: none; }
+  #side a { white-space: nowrap; padding: 8px 12px; border-radius: 8px; font-size: 13.5px; }
+  #main { padding: 10px; max-width: none; }
+  .card { padding: 12px; border-radius: 8px; }
+  table { display: block; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+  table thead, table tbody { display: table; width: 100%; }
+  .grid2, .grid3 { grid-template-columns: 1fr; }
+  input, textarea, select { font-size: 15px; }
+  button { padding: 9px 14px; }
+  .row { flex-wrap: wrap; }
+}
+</style>
+</head>
+<body>
+
+<div id="login">
+  <h1>Stories 管理后台</h1>
+  <input id="pw" type="password" placeholder="管理口令" onkeydown="if(event.key==='Enter')doLogin()">
+  <div style="height:12px"></div>
+  <button style="width:100%" onclick="doLogin()">登录</button>
+  <p id="loginErr" class="hint" style="color:#e74c3c;margin-top:10px"></p>
+</div>
+
+<div id="app" class="hidden">
+  <div id="side">
+    <h1>Stories</h1>
+    <a data-tab="chars" class="active" onclick="switchTab('chars')">角色管理</a>
+    <a data-tab="kb" onclick="switchTab('kb')">知识库</a>
+    <a data-tab="stickers" onclick="switchTab('stickers')">表情包</a>
+    <a data-tab="bg" onclick="switchTab('bg')">背景图库</a>
+    <a data-tab="records" onclick="switchTab('records')">聊天记录</a>
+  <a data-tab="moments" onclick="switchTab('moments')">朋友圈</a>
+  <a data-tab="worlds" onclick="switchTab('worlds')">世界</a>
+  <a data-tab="memory" onclick="switchTab('memory')">记忆</a>
+  <a data-tab="settings" onclick="switchTab('settings')">设置与日志</a>
+    <a onclick="logout()" style="color:#888;margin-top:20px">退出登录</a>
+  </div>
+  <div id="main"></div>
+</div>
+
+<script>
+const API = '';
+let TOKEN = localStorage.getItem('stories_token') || '';
+let CHARS = [];
+
+function toast(msg, ms=2200) {
+  const t = document.createElement('div');
+  t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), ms);
+}
+function esc(s) { return (s==null?'':String(s)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function fmtTime(ts) {
+  if (ts == null) return '';
+  const d = new Date(Number(ts) * 1000);
+  return isNaN(d.getTime()) ? '' : d.toLocaleString('zh-CN', {hour12: false});
+}
+// 媒体文件带管理令牌（服务端对 /media /uploads 校验 token）
+function tokUrl(u) {
+  if (!u) return '';
+  const s = String(u);
+  if (s.startsWith('http')) return s;
+  const sep = s.includes('?') ? '&' : '?';
+  return s + sep + 'token=' + TOKEN;
+}
+
+// ===== 模型列表（真·下拉选择 + 自定义输入）=====
+let MODELS = null;
+async function loadModels() {
+  if (MODELS) return MODELS;
+  try {
+    const d = await api('/admin/api/models');
+    MODELS = (d && typeof d === 'object' && Array.isArray(d.chat)) ? d : {chat: [], deepseek: [], image: [], video: [], all: []};
+  } catch (_) { MODELS = {chat: [], deepseek: [], image: [], video: [], all: []}; }
+  return MODELS;
+}
+function modelField(id, label, current, options, hint) {
+  options = options || [];
+  const optVal = (o) => (typeof o === 'string' ? o : (o && o.value) || '');
+  const optLab = (o) => (typeof o === 'string' ? o : (o && (o.label || o.value)) || '');
+  const isCustom = !!current && !options.some((o) => optVal(o) === current);
+  let opts = '<option value="">（使用默认）</option>';
+  for (const o of options) opts += `<option value="${esc(optVal(o))}"${optVal(o) === current ? ' selected' : ''}>${esc(optLab(o))}</option>`;
+  opts += `<option value="__custom__"${isCustom ? ' selected' : ''}>自定义…</option>`;
+  return `<div><label class="f">${label}</label>
+    <select id="${id}_sel" onchange="onModelSel('${id}')" style="width:100%">${opts}</select>
+    <input id="${id}_custom" placeholder="输入模型名" value="${esc(isCustom ? current : '')}" style="margin-top:4px;display:${isCustom ? 'block' : 'none'}">
+    ${hint ? `<div class="hint">${hint}</div>` : ''}
+  </div>`;
+}
+function onModelSel(id) {
+  const sel = document.getElementById(id + '_sel');
+  const inp = document.getElementById(id + '_custom');
+  if (sel && inp) inp.style.display = sel.value === '__custom__' ? 'block' : 'none';
+}
+function modelValue(id) {
+  const sel = document.getElementById(id + '_sel');
+  if (!sel) return '';
+  if (sel.value === '__custom__') {
+    const inp = document.getElementById(id + '_custom');
+    return inp ? inp.value.trim() : '';
+  }
+  return sel.value;
+}
+
+async function api(path, opts={}) {
+  const headers = Object.assign({}, opts.headers || {});
+  if (TOKEN) headers['X-Admin-Token'] = TOKEN;
+  if (opts.json) { headers['Content-Type'] = 'application/json'; opts.body = JSON.stringify(opts.json); opts.method = opts.method || 'POST'; }
+  const r = await fetch(API + path, Object.assign({}, opts, { headers }));
+  if (r.status === 401) { logout(); throw new Error('登录过期'); }
+  const ct = r.headers.get('content-type') || '';
+  if (ct.includes('application/json')) return r.json();
+  return r.text();
+}
+
+async function doLogin() {
+  const errEl = document.getElementById('loginErr');
+  try {
+    const pw = document.getElementById('pw').value;
+    const r = await fetch('/admin/login', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({password: pw})});
+    if (!r.ok) { errEl.textContent = `登录失败（HTTP ${r.status}）`; return; }
+    const d = await r.json();
+    if (!d.ok) { errEl.textContent = d.error || '登录失败'; return; }
+    TOKEN = d.token; localStorage.setItem('stories_token', TOKEN);
+    errEl.textContent = '';
+    showApp();
+  } catch (e) {
+    errEl.textContent = '连接服务器失败，请稍后重试';
+  }
+}
+function logout() { TOKEN=''; localStorage.removeItem('stories_token'); location.reload(); }
+function showApp() {
+  document.getElementById('login').classList.add('hidden');
+  document.getElementById('app').classList.remove('hidden');
+  switchTab('chars');
+}
+
+let TAB = 'chars';
+function switchTab(tab) {
+  TAB = tab;
+  document.querySelectorAll('#side a[data-tab]').forEach(a => a.classList.toggle('active', a.dataset.tab === tab));
+  const main = document.getElementById('main');
+  if (tab === 'chars') renderChars();
+  else if (tab === 'kb') renderKb();
+  else if (tab === 'stickers') renderStickers();
+  else if (tab === 'bg') renderBg();
+  else if (tab === 'records') renderRecords();
+  else if (tab === 'moments') renderMoments();
+  else if (tab === 'worlds') renderWorlds();
+  else if (tab === 'memory') renderMemory();
+  else if (tab === 'settings') renderSettings();
+}
+
+// ================= 角色 =================
+async function loadChars() {
+  const d = await api('/admin/api/characters');
+  CHARS = d.characters || [];
+  return CHARS;
+}
+
+async function renderChars() {
+  const chars = await loadChars();
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="card">
+      <div class="row"><b>角色列表</b><span class="grow"></span>
+      <button onclick="editChar(null)">＋ 新建角色</button></div>
+      <div style="height:10px"></div>
+      <table><thead><tr><th>ID</th><th>头像</th><th>名字</th><th>照片</th><th>语音</th><th>表情</th><th>提醒</th><th>消息数</th><th>操作</th></tr></thead>
+      <tbody>${chars.map(c => `
+        <tr>
+          <td>${c.id}</td>
+          <td>${c.avatar_url ? `<img class="thumb" src="${esc(tokUrl(c.avatar_url))}">` : '<span class="hint">默认</span>'}</td>
+          <td><b>${esc(c.name)}</b><div class="hint">${esc((c.description||'').slice(0,30))}</div></td>
+          <td>${c.chat.photo_enabled ? '<span class="tag ok">开</span>' : '<span class="tag">关</span>'}</td>
+          <td>${c.chat.voice_enabled ? '<span class="tag ok">开</span>' : '<span class="tag">关</span>'}</td>
+          <td>${c.chat.sticker_enabled ? '<span class="tag ok">开</span>' : '<span class="tag">关</span>'}</td>
+          <td>${c.reminder && c.reminder.enabled ? `<span class="tag ok">${c.reminder.week_count}/${c.reminder.target}</span>` : '<span class="tag">关</span>'}</td>
+          <td>${c.msg_count || 0}</td>
+          <td>
+            <button class="small" onclick="editChar(${c.id})">编辑</button>
+            <button class="small red" onclick="delChar(${c.id})">删除</button>
+          </td>
+        </tr>`).join('')}${chars.length === 0 ? '<tr><td colspan="9" class="hint">还没有角色，点右上角新建</td></tr>' : ''}</tbody></table>
+    </div>`;
+}
+
+async function editChar(id) {
+  const c = id ? CHARS.find(x => x.id === id) : null;
+  const f = c ? (c.fields || {}) : {};
+  const chat = c ? c.chat : {photo_enabled:false, voice_enabled:false, sticker_enabled:true, background:''};
+  const models = await loadModels();
+  const charTextModels = [
+    ...(models.chat || []).map((id) => ({
+      value: id,
+      label: id + (/deepseek/i.test(id) ? '（豆包·方舟托管）' : '（豆包）'),
+    })),
+    ...(models.deepseek || []).map((id) => ({ value: id, label: id + '（DeepSeek 官方）' })),
+  ];
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="card">
+      <div class="row"><b>${c ? '编辑角色 #' + c.id : '新建角色'}</b><span class="grow"></span>
+        <button class="gray" onclick="renderChars()">返回</button></div>
+      <div class="grid2">
+        <div><label class="f">名字 *</label><input id="f_name" value="${esc(c?c.name:'')}"><div class="hint">聊天列表与聊天页顶部显示的名字（必填）</div></div>
+        <div><label class="f">简介（列表/管理用）</label><input id="f_desc" value="${esc(c?c.description:'')}"><div class="hint">仅供列表/管理展示，AI 对话不读取</div></div>
+      </div>
+      <div class="grid3">
+        <div><label class="f">对方称呼</label><input id="f_nickname" value="${esc(f.nickname||'')}"><div class="hint">AI 平时怎么称呼你</div></div>
+        <div><label class="f">性别</label><input id="f_gender" value="${esc(f.gender||'')}"><div class="hint">影响 AI 语气与自我认知</div></div>
+        <div><label class="f">年龄</label><input id="f_age" value="${esc(f.age||'')}"><div class="hint">角色的年龄设定</div></div>
+      </div>
+      <div class="grid3">
+        <div><label class="f">身份/职业</label><input id="f_job" value="${esc(f.job||'')}"><div class="hint">例：工程师、学生、医生</div></div>
+        <div><label class="f">性格</label><input id="f_personality" value="${esc(f.personality||'')}"><div class="hint">影响语气，例：温柔、傲娇、毒舌</div></div>
+        <div><label class="f">说话风格</label><input id="f_style" value="${esc(f.style||'')}"><div class="hint">影响用词，例：短句、爱用颜文字</div></div>
+      </div>
+      <div class="grid2">
+        <div><label class="f">口癖/习惯</label><input id="f_habits" value="${esc(f.habits||'')}"><div class="hint">口头禅或小动作</div></div>
+        <div><label class="f">禁忌</label><input id="f_taboo" value="${esc(f.taboo||'')}"><div class="hint">绝不做的事 / 不聊的话题，可留空</div></div>
+      </div>
+      <label class="f">故事背景（世界背景、社会背景等；留空 = 默认「现在」当代现实世界）</label>
+      <textarea id="f_story" style="min-height:100px">${esc(c?c.story:'')}</textarea><div class="hint">填了它，AI 会严格按此世界观演绎；留空 = 默认「现在」当代现实世界</div>
+      <label class="f">人设（自由文本，System Prompt）</label>
+      <textarea id="f_persona" style="min-height:160px">${esc(c?c.persona_full:'')}</textarea><div class="hint">最核心的设定底稿（System Prompt）：身份、经历、与玩家的关系、说话习惯；越详细越像</div>
+      <div class="grid3">
+        <div><label class="f">开场白</label><input id="f_greeting" value="${esc(c?c.greeting:'')}"><div class="hint">首次进入聊天时角色主动发的第一句</div></div>
+        ${modelField('f_model', '模型（留空=使用全局主模型）', c?c.model:'', charTextModels, '该角色单独使用的对话模型；标注了来源（豆包 / 豆包·方舟托管 / DeepSeek 官方），保存后自动路由；留空=用后台设置的全局主模型')}
+        <div><label class="f">温度 temperature</label><input id="f_temp" type="number" step="0.1" value="${c?c.temperature:0.9}"><div class="hint">推荐 0.8~1.1（越高越活泼）；过高会崩人设、答非所问，超过 1.3 会被按 1.3 处理</div></div>
+      </div>
+      <div style="height:6px"></div>
+      <div class="row" style="gap:18px">
+        <label><input type="checkbox" id="f_photo" style="width:auto" ${chat.photo_enabled?'checked':''}> 照片生成</label>
+        <label><input type="checkbox" id="f_voice" style="width:auto" ${chat.voice_enabled?'checked':''}> 语音</label>
+        <label><input type="checkbox" id="f_sticker" style="width:auto" ${chat.sticker_enabled?'checked':''}> 表情包</label>
+        <label><input type="checkbox" id="f_video" style="width:auto" ${chat.video_enabled?'checked':''}> 视频</label>
+        <label><input type="checkbox" id="f_wake" style="width:auto" ${chat.wake_enabled !== false ? 'checked' : ''}> 自动回复</label>
+      </div>
+      <div class="row" style="gap:18px;margin-top:6px">
+        <label><input type="checkbox" id="f_imgdesc" style="width:auto" ${chat.img_desc_enabled !== false ? 'checked' : ''}> 图片转述（把用户的图片转成文字再交给该角色的模型）</label>
+      </div>
+      <div class="hint">照片 / 语音 / 表情 / 视频 / 自动回复 / 图片转述为每个角色独立开关（默认：照片关、语音关、视频关、表情开、自动回复开、图片转述开）。若该角色用多模态对话模型（如豆包），可关闭「图片转述」，让原图直接交给模型看图。</div>
+      <div class="grid2" style="margin-top:6px">
+        <label><input type="checkbox" id="f_reminder" style="width:auto" ${(c && c.reminder && c.reminder.enabled) ? 'checked' : ''}> 提醒插件（reminder）</label>
+        <div><label class="f">每周提醒目标（次）</label><input id="f_reminder_target" type="number" value="${c && c.reminder ? c.reminder.target : 5}"><div class="hint">本周进度：${c && c.reminder ? c.reminder.week_count : 0} / ${c && c.reminder ? c.reminder.target : 5}（冷却参数在设置页）</div></div>
+      </div>
+      <div class="row" style="margin-top:6px;gap:18px">
+        <label><input type="checkbox" id="f_mauto" style="width:auto" ${c && c.chat && c.chat.moments_auto ? 'checked' : ''}> 自动发朋友圈</label>
+        <label><input type="checkbox" id="f_mreact" style="width:auto" ${!c || !c.chat || c.chat.moments_react ? 'checked' : ''}> 朋友圈互动（点赞/评论你的动态）</label>
+      </div>
+      <div style="height:10px"></div>
+      <div class="row">
+        <button onclick="saveChar(${c?c.id:'null'})">保存</button>
+        ${c ? `<input type="file" id="f_avatar" accept="image/*" style="width:240px">
+               <button class="gray" onclick="uploadAvatar(${c.id})">上传头像</button>` : ''}
+      </div>
+    </div>`;
+}
+
+async function saveChar(id) {
+  const val = k => document.getElementById(k)?.value || '';
+  const body = {
+    name: val('f_name'), description: val('f_desc'), persona_full: val('f_persona'), story: val('f_story'),
+    greeting: val('f_greeting'), model: modelValue('f_model'),
+    temperature: Number.isFinite(parseFloat(val('f_temp'))) ? parseFloat(val('f_temp')) : 0.9,
+    fields: {
+      nickname: val('f_nickname'), gender: val('f_gender'), age: val('f_age'),
+      job: val('f_job'), personality: val('f_personality'), style: val('f_style'),
+      habits: val('f_habits'), taboo: val('f_taboo'),
+    },
+    chat: {
+      photo_enabled: document.getElementById('f_photo').checked,
+      voice_enabled: document.getElementById('f_voice').checked,
+      sticker_enabled: document.getElementById('f_sticker').checked,
+      video_enabled: document.getElementById('f_video').checked,
+      wake_enabled: document.getElementById('f_wake').checked,
+      reminder_enabled: document.getElementById('f_reminder').checked,
+      reminder_target: parseInt(document.getElementById('f_reminder_target').value) || 5,
+      moments_auto: document.getElementById('f_mauto').checked,
+      moments_react: document.getElementById('f_mreact').checked,
+      img_desc_enabled: document.getElementById('f_imgdesc').checked,
+    },
+  };
+  if (id) {
+    body.id = id;
+    // 管理页不编辑这两个字段：从当前角色带回，避免保存时被重置（App 已同样处理）
+    const cur = CHARS.find(x => x.id === id);
+    if (!cur) { toast('角色已不存在，请刷新列表'); return; }
+    body.enabled = cur.enabled; body.sort_order = cur.sort_order;
+  }
+  const r = await api('/api/character/save', {json: body});
+  toast(r.ok ? '已保存' : '保存失败');
+  renderChars();
+}
+
+async function delChar(id) {
+  const c = CHARS.find(x => x.id === id);
+  if (!confirm(`确认删除角色「${c.name}」？聊天记录与知识库都会删除！`)) return;
+  await api('/api/character/delete', {json: {id}});
+  toast('已删除'); renderChars();
+}
+
+async function uploadAvatar(id) {
+  const f = document.getElementById('f_avatar').files[0];
+  if (!f) { toast('先选择图片'); return; }
+  const fd = new FormData(); fd.append('character_id', id); fd.append('file', f);
+  const r = await api('/api/character/avatar', {method:'POST', body: fd});
+  toast(r.ok ? '头像已更新' : '上传失败');
+  if (r && r.ok) { renderChars(); }
+}
+
+// ================= 知识库 =================
+async function renderKb() {
+  if (!CHARS.length) await loadChars();
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="card">
+      <div class="row"><b>知识库管理</b><span class="grow"></span>
+        <select id="kb_target" style="width:260px" onchange="loadKbList()">
+          <option value="public">公共知识库（所有角色可用）</option>
+          ${CHARS.map(c => `<option value="char:${c.id}">角色：${esc(c.name)}</option>`).join('')}
+        </select>
+        <input type="file" id="kb_file" accept=".md,.txt,.markdown" style="width:220px">
+        <button onclick="uploadKb()">上传</button>
+      </div>
+      <p class="hint">支持 md / txt，≤5MB；上传后自动解析、分块、向量化</p>
+      <div id="kb_list"></div>
+    </div>`;
+  loadKbList();
+}
+
+async function loadKbList() {
+  const t = document.getElementById('kb_target').value;
+  const cid = t.startsWith('char:') ? t.split(':')[1] : 0;
+  const d = await api('/api/kb/list?character_id=' + cid);
+  const docs = [...(d.character||[]), ...(d.public||[]).map(x=>({...x, _pub:true}))];
+  const statusTag = s => s === 'ready' ? '<span class="tag ok">就绪</span>' : s === 'error' ? '<span class="tag err">失败</span>' : '<span class="tag wait">处理中</span>';
+  document.getElementById('kb_list').innerHTML = `
+    <table><thead><tr><th>ID</th><th>文件</th><th>范围</th><th>状态</th><th>块数</th><th>错误</th><th></th></tr></thead>
+    <tbody>${docs.map(x => `
+      <tr><td>${x.id}</td><td>${esc(x.filename)}</td>
+      <td>${x._pub || (t==='public') ? '公共' : '角色'}</td>
+      <td>${statusTag(x.status)}</td><td>${x.chunk_count||0}</td>
+      <td class="hint">${esc((x.error||'').slice(0,40))}</td>
+      <td><button class="small red" onclick="delKb(${x.id})">删除</button></td></tr>`).join('')}
+    ${docs.length===0?'<tr><td colspan="7" class="hint">暂无文档</td></tr>':''}</tbody></table>`;
+}
+
+async function uploadKb() {
+  const t = document.getElementById('kb_target').value;
+  const f = document.getElementById('kb_file').files[0];
+  if (!f) { toast('先选择文件'); return; }
+  const fd = new FormData();
+  if (t === 'public') { fd.append('scope','public'); fd.append('character_id','0'); }
+  else { fd.append('scope','character'); fd.append('character_id', t.split(':')[1]); }
+  fd.append('file', f);
+  const r = await api('/api/kb/upload', {method:'POST', body: fd});
+  toast(r.ok ? `上传成功（${r.chunks} 块），正在向量化` : ('失败: ' + (r.error||r.detail||'')));
+  loadKbList();
+}
+
+async function delKb(id) {
+  if (!confirm('删除该知识库文档？')) return;
+  await api('/api/kb/delete', {json: {id}});
+  toast('已删除'); loadKbList();
+}
+
+// ================= 表情 / 背景 =================
+async function renderStickers() {
+  const d = await api('/api/stickers');
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="card">
+      <div class="row"><b>表情包库（AI 按名字/标签挑选）</b><span class="grow"></span>
+        <input id="st_label" placeholder="名字（如：微笑）" style="width:150px">
+        <input id="st_tags" placeholder="标签（如：开心,问候）" style="width:180px">
+        <input type="file" id="st_file" accept="image/*" style="width:200px">
+        <button onclick="uploadSticker()">上传表情</button>
+      </div>
+    </div>
+    <div class="card"><div class="row">${(d.stickers||[]).map(s => `
+      <div style="text-align:center;margin:6px">
+        <img class="thumb" style="width:64px;height:64px" src="${esc(tokUrl(s.url))}"><br>
+        <span class="hint">${esc(s.label||'-')}</span><br>
+        <button class="small red" onclick="delSticker(${s.id})">删</button>
+      </div>`).join('')}${(d.stickers||[]).length===0?'<span class="hint">还没有表情，先上传（可从开源微信表情包批量传）</span>':''}</div></div>`;
+}
+async function uploadSticker() {
+  const f = document.getElementById('st_file').files[0];
+  if (!f) { toast('先选择图片'); return; }
+  const fd = new FormData();
+  fd.append('label', document.getElementById('st_label').value);
+  fd.append('tags', document.getElementById('st_tags').value);
+  fd.append('file', f);
+  const r = await api('/admin/api/stickers', {method:'POST', body: fd});
+  toast(r.ok ? '已上传' : '失败'); renderStickers();
+}
+async function delSticker(id) { if(!confirm('删除？'))return; await api('/admin/api/stickers/delete',{json:{id}}); renderStickers(); }
+
+async function renderBg() {
+  const d = await api('/api/backgrounds');
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="card">
+      <div class="row"><b>背景图库（聊天页可选）</b><span class="grow"></span>
+        <input id="bg_name" placeholder="背景名" style="width:150px">
+        <input type="file" id="bg_file" accept="image/*" style="width:220px">
+        <button onclick="uploadBg()">上传背景</button>
+      </div>
+    </div>
+    <div class="card"><div class="swatches row">${(d.backgrounds||[]).map(b => `
+      <div style="text-align:center">
+        <img src="${esc(tokUrl(b.url))}"><br><span class="hint">${esc(b.name||'')}</span><br>
+        <button class="small red" onclick="delBg(${b.id})">删</button>
+      </div>`).join('')}${(d.backgrounds||[]).length===0?'<span class="hint">还没有背景图</span>':''}</div></div>`;
+}
+async function uploadBg() {
+  const f = document.getElementById('bg_file').files[0];
+  if (!f) { toast('先选择图片'); return; }
+  const fd = new FormData(); fd.append('name', document.getElementById('bg_name').value); fd.append('file', f);
+  try {
+    const r = await api('/admin/api/backgrounds', {method:'POST', body: fd});
+    if (r && r.ok) { toast('已上传'); renderBg(); }
+    else { toast('上传失败：' + ((r && (r.detail || r.error)) || '未知错误')); }
+  } catch (e) { toast('上传失败，请检查网络'); }
+}
+async function delBg(id) { if(!confirm('删除？'))return; await api('/admin/api/backgrounds/delete',{json:{id}}); renderBg(); }
+
+// ================= 聊天记录 =================
+let REC_CHAR = null, REC_BEFORE = 0, REC_MIN = 0, REC_NAV = [], REC_SEL = new Set();
+async function renderRecords() {
+  if (!CHARS.length) await loadChars();
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="card">
+      <div class="row"><b>聊天记录</b><span class="grow"></span>
+        <select id="rec_char" style="width:240px" onchange="recReset()">
+          ${CHARS.map(c => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}
+        </select>
+        <button class="gray" onclick="exportRec('json')">导出 JSON</button>
+        <button class="gray" onclick="exportRec('txt')">导出 TXT</button>
+        <button class="red" onclick="clearRec()">清空该角色全部消息</button>
+      </div>
+      <p class="hint">单条消息右侧「删」可逐条删除；勾选多条后可批量删除；「清空」会删除整段对话（保留开场白）</p>
+      <div class="row" style="margin-top:8px">
+        <span class="hint">群聊记录：</span>
+        <select id="rec_group" style="width:240px"><option value="">（选择群聊）</option></select>
+        <button class="gray" onclick="groupReset()">查看群聊记录</button>
+        <button class="red" onclick="clearGroupRec()">清空该群消息</button>
+      </div>
+      <div id="rec_box" style="margin-top:12px"></div>
+    </div>`;
+  loadGroups();
+  recReset();
+}
+function recReset() { REC_BEFORE = 0; REC_NAV = []; REC_SEL.clear(); loadRecords(0); }
+async function loadRecords(before, oldest) {
+  const cid = document.getElementById('rec_char').value;
+  REC_CHAR = cid; REC_BEFORE = before || 0;
+  const qs = `character_id=${cid}&limit=100` + (oldest ? '&oldest=1' : (REC_BEFORE > 0 ? `&before_id=${REC_BEFORE}` : ''));
+  const d = await api(`/admin/api/messages?${qs}`);
+  if (!d || !Array.isArray(d.messages)) { toast('记录加载失败，请刷新'); return; }
+  let memItems = [];
+  try { const mm = await api(`/admin/api/character/memory?cid=${cid}`); memItems = mm.items || []; } catch (e) {}
+  let longItems = [];
+  let pinItems = [];
+  try { const lm = await api(`/admin/api/character/long_memory?cid=${cid}`); longItems = lm.items || []; pinItems = lm.permanent || []; } catch (e) {}
+  REC_MIN = d.min_id || 0;
+  if (oldest && d.messages.length) REC_BEFORE = d.messages[0].id; // 已跳到最早一页：游标指向最早那条，再点"更早"自然为空
+  const fmt = ts => new Date(ts*1000).toLocaleString('zh-CN');
+  const firstId = d.messages.length ? d.messages[0].id : 0;
+  const hasOlder = d.messages.length >= 100 && firstId > (d.min_id || 0);
+  const hasNewer = REC_BEFORE > 0;
+  const rangeHint = d.messages.length ? `（显示 #${d.messages[0].id} ~ #${d.messages[d.messages.length-1].id}，最早的在前）` : '';
+  document.getElementById('rec_box').innerHTML = `
+    <div class="card" style="margin-bottom:12px">
+      <div class="row"><b>承诺 / 立场记忆（每行一条）</b><span class="grow"></span>
+        <button onclick="saveRecMem()">保存记忆</button>
+      </div>
+      <p class="hint">角色会把这里的内容当作"自己说过的话"长期保持一致。若出现"答应的没记住、没答应的记住了"，可直接在这里增删修正，保存后立即生效。</p>
+      <textarea id="rec_mem" style="min-height:120px">${esc((memItems || []).join('\n'))}</textarea>
+    </div>
+    <div class="card" style="margin-bottom:12px">
+      <div class="row"><b>重要记忆 / 永久记忆</b><span class="grow"></span>
+        <button onclick="saveRecLongMem()">保存重要记忆</button>
+      </div>
+      <p class="hint">上框：重要记忆——系统自动抽取 + 手动补充，角色会一直记得（最多 100 条，注入时永久优先 + 最近 18 条）；<b>你手写的条目不会随回溯 / 清空记录被清理</b>（想删除：删掉那一行再"保存重要记忆"）。下框：永久记忆——永不清理、每次必注入（最多 40 条，其中前 12 条每次注入）、回溯和清空记录都不受影响。</p>
+      <div class="row"><label class="f">重要记忆（每行一条，自动+手动）</label><span class="grow"></span><button class="small gray" onclick="clearBox('rec_longmem')">清空此框</button></div>
+      <textarea id="rec_longmem" style="min-height:110px">${esc((longItems || []).join('\n'))}</textarea>
+      <div style="height:8px"></div>
+      <div class="row"><label class="f">永久记忆（每行一条，永不忘）</label><span class="grow"></span><button class="small gray" onclick="clearBox('rec_pinmem')">清空此框</button></div>
+      <textarea id="rec_pinmem" style="min-height:90px">${esc((pinItems || []).join('\n'))}</textarea>
+    </div>
+    <div class="row"><span class="hint">共 ${d.total || 0} 条 ${rangeHint}</span><span class="grow"></span>
+      <span class="hint" id="rec_sel_n">已选 ${REC_SEL.size} 条</span>
+      <button class="small gray" onclick="recSelectAll()">全选/反选本页</button>
+      <button class="small red" onclick="recDeleteSelected()">删除选中</button>
+      ${hasNewer?`<button class="small gray" onclick="recNewer()">上一页（更新的）</button>`:''}
+      ${hasNewer?`<button class="small gray" onclick="recReset()">回到最新</button>`:''}
+      ${hasOlder?`<button class="small gray" onclick="recOlder(${firstId})">下一页（更早的）</button>`:''}
+      ${hasOlder?`<button class="small gray" onclick="recEarliest()">跳到最早</button>`:''}
+    </div>
+    <div class="msg">${d.messages.map(m => {
+      const who = m.role === 'user' ? '我' : '角色';
+      const kind = m.kind || 'text';
+      let body = m.content;
+      if (kind === 'voice') body = '[语音] ' + (m.content || '（无转写）');
+      else if (kind === 'image') body = '[图片]' + (m.content ? ' ' + m.content : '') + (m.img_desc ? '（' + m.img_desc + '）' : '');
+      else if (kind === 'photo') body = '[照片]' + (m.content ? ' ' + m.content : '');
+      else if (kind === 'video') body = '[视频]' + (m.content ? ' ' + m.content : '') + (m.img_desc ? '（' + m.img_desc + '）' : '');
+      else if (kind === 'sticker') body = '[表情] ' + (m.content || '');
+      return `<div class="m"><input type="checkbox" class="recchk" data-id="${m.id}" onchange="recToggle(${m.id}, this.checked)" ${REC_SEL.has(m.id)?'checked':''} style="width:auto;margin-right:6px"><span class="hint">[${fmt(m.ts)}] #${m.id}</span> <b class="${m.role==='user'?'u':'c'}">${who}</b>：${esc(body)}${m.media_url?` <a href="${esc(tokUrl(m.media_url))}" target="_blank">附件</a>`:''} <button class="small red" onclick="delRecMsg(${m.id})">删</button></div>`;
+    }).join('')}</div>`;
+}
+function recToggle(id, on) {
+  if (on) REC_SEL.add(id); else REC_SEL.delete(id);
+  const el = document.getElementById('rec_sel_n');
+  if (el) el.textContent = `已选 ${REC_SEL.size} 条`;
+}
+function recSelectAll() {
+  const cbs = document.querySelectorAll('#rec_box .recchk');
+  const all = [...cbs].every(c => c.checked);
+  cbs.forEach(c => {
+    c.checked = !all;
+    const id = parseInt(c.dataset.id);
+    if (all) REC_SEL.delete(id); else REC_SEL.add(id);
+  });
+  const el = document.getElementById('rec_sel_n');
+  if (el) el.textContent = `已选 ${REC_SEL.size} 条`;
+}
+async function recDeleteSelected() {
+  if (!REC_SEL.size) { toast('先勾选要删除的消息'); return; }
+  if (!confirm(`删除选中的 ${REC_SEL.size} 条消息？此操作不可恢复`)) return;
+  const r = await api('/admin/api/messages/batch_delete', {json: {ids: [...REC_SEL]}});
+  toast(`已删除 ${r.deleted || REC_SEL.size} 条`);
+  REC_SEL.clear();
+  loadRecords(REC_BEFORE);
+}
+async function saveRecMem() {
+  const cid = document.getElementById('rec_char').value;
+  const el = document.getElementById('rec_mem');
+  if (!el) return;
+  const items = el.value.split('\n').map(s => s.trim()).filter(s => s);
+  await api('/admin/api/character/memory', {json: {cid: parseInt(cid), items}});
+  toast(`记忆已保存（${items.length} 条，立即生效）`);
+}
+async function saveRecLongMem() {
+  const cid = document.getElementById('rec_char').value;
+  const el = document.getElementById('rec_longmem');
+  const pe = document.getElementById('rec_pinmem');
+  if (!el) return;
+  const items = el.value.split('\n').map(s => s.trim()).filter(s => s);
+  const permanent = pe ? pe.value.split('\n').map(s => s.trim()).filter(s => s) : [];
+  await api('/admin/api/character/long_memory', {json: {cid: parseInt(cid), items, permanent}});
+  toast(`已保存：重要记忆 ${items.length} 条 / 永久记忆 ${permanent.length} 条（立即生效）`);
+}
+function clearBox(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.value = '';
+  toast('已清空输入框（记得点上方"保存重要记忆"生效）');
+}
+function recOlder(oldestId) { REC_NAV.push(REC_BEFORE); loadRecords(oldestId); }
+function recNewer() { const prev = REC_NAV.length ? REC_NAV.pop() : 0; loadRecords(prev); }
+function recEarliest() { REC_NAV.push(REC_BEFORE); loadRecords(0, true); }
+async function delRecMsg(id) {
+  if (!confirm(`删除这条消息（#${id}）？`)) return;
+  await api('/admin/api/messages/delete', {json: {id}});
+  REC_SEL.delete(id);
+  toast('已删除');
+  loadRecords(REC_BEFORE);
+}
+async function clearRec() {
+  if (REC_CHAR == null) return;
+  const c = CHARS.find(x => x.id == REC_CHAR);
+  if (!confirm(`清空「${c ? c.name : REC_CHAR}」的全部消息？此操作不可恢复（保留开场白）`)) return;
+  await api('/admin/api/messages/clear', {json: {id: parseInt(REC_CHAR)}});
+  REC_SEL.clear();
+  toast('已清空');
+  loadRecords(0);
+}
+
+// ===== 群聊记录 =====
+let GROUPS = [], GRP_BEFORE = 0, GRP_MIN = 0, GRP_NAV = [], GRP_SEL = new Set();
+async function loadGroups() {
+  try {
+    const d = await api('/admin/api/groups');
+    GROUPS = d.groups || [];
+    const sel = document.getElementById('rec_group');
+    if (sel) sel.innerHTML = '<option value="">（选择群聊）</option>' +
+      GROUPS.map(g => `<option value="${g.id}">${esc(g.name)}（${g.count} 条）</option>`).join('');
+  } catch (e) {}
+}
+async function groupReset() {
+  const sel = document.getElementById('rec_group');
+  const gid = sel ? sel.value : '';
+  if (!gid) { toast('请先选择群聊'); return; }
+  GRP_BEFORE = 0; GRP_NAV = []; GRP_SEL.clear();
+  loadGroupRecords(0);
+}
+async function loadGroupRecords(before) {
+  const sel = document.getElementById('rec_group');
+  const gid = sel ? sel.value : '';
+  if (!gid) return;
+  GRP_BEFORE = before || 0;
+  const d = await api(`/admin/api/group/messages?gid=${gid}&limit=100${GRP_BEFORE > 0 ? `&before_id=${GRP_BEFORE}` : ''}`);
+  if (!d || !Array.isArray(d.messages)) { toast('加载失败'); return; }
+  GRP_MIN = d.min_id || 0;
+  const fmt = ts => new Date(ts * 1000).toLocaleString('zh-CN');
+  const firstId = d.messages.length ? d.messages[0].id : 0;
+  const lastId = d.messages.length ? d.messages[d.messages.length - 1].id : 0;
+  const hasOlder = d.messages.length >= 100 && firstId > (d.min_id || 0);
+  const hasNewer = GRP_BEFORE > 0;
+  const gname = (GROUPS.find(x => x.id == gid) || {}).name || '';
+  document.getElementById('rec_box').innerHTML = `
+    <div class="row"><span class="hint">群聊「${esc(gname)}」共 ${d.total || 0} 条${d.messages.length ? `（显示 #${firstId} ~ #${lastId}，最早的在前）` : ''}</span><span class="grow"></span>
+      <span class="hint" id="grp_sel_n">已选 ${GRP_SEL.size} 条</span>
+      <button class="small gray" onclick="grpSelectAll()">全选/反选本页</button>
+      <button class="small red" onclick="grpDeleteSelected()">删除选中</button>
+      ${hasNewer ? `<button class="small gray" onclick="grpNewer()">上一页（更新的）</button>` : ''}
+      ${hasNewer ? `<button class="small gray" onclick="groupReset()">回到最新</button>` : ''}
+      ${hasOlder ? `<button class="small gray" onclick="grpOlder(${firstId})">下一页（更早的）</button>` : ''}
+      ${hasOlder ? `<button class="small gray" onclick="grpEarliest()">跳到最早</button>` : ''}
+    </div>
+    <div class="msg">${d.messages.map(m => {
+      const who = m.role === 'user' ? '我' : (m.name || '角色');
+      const kind = m.kind || 'text';
+      let body = m.content;
+      if (kind === 'voice') body = '[语音] ' + (m.content || '（无转写）');
+      else if (kind === 'image') body = '[图片]' + (m.img_desc ? '（' + m.img_desc + '）' : '');
+      else if (kind === 'video') body = '[视频]' + (m.img_desc ? '（' + m.img_desc + '）' : '');
+      else if (kind === 'sticker') body = '[表情] ' + (m.content || '');
+      return `<div class="m"><input type="checkbox" class="grpchk" data-id="${m.id}" onchange="grpToggle(${m.id}, this.checked)" ${GRP_SEL.has(m.id)?'checked':''} style="width:auto;margin-right:6px"><span class="hint">[${fmt(m.ts)}] #${m.id}</span> <b class="${m.role === 'user' ? 'u' : 'c'}">${esc(who)}</b>：${esc(body)}${m.media_url ? ` <a href="${esc(tokUrl(m.media_url))}" target="_blank">附件</a>` : ''} <button class="small red" onclick="delGroupMsg(${m.id})">删</button></div>`;
+    }).join('')}</div>`;
+}
+function grpToggle(id, on) {
+  if (on) GRP_SEL.add(id); else GRP_SEL.delete(id);
+  const el = document.getElementById('grp_sel_n');
+  if (el) el.textContent = `已选 ${GRP_SEL.size} 条`;
+}
+function grpSelectAll() {
+  const cbs = document.querySelectorAll('#rec_box .grpchk');
+  const all = [...cbs].every(c => c.checked);
+  cbs.forEach(c => {
+    c.checked = !all;
+    const id = parseInt(c.dataset.id);
+    if (all) GRP_SEL.delete(id); else GRP_SEL.add(id);
+  });
+  const el = document.getElementById('grp_sel_n');
+  if (el) el.textContent = `已选 ${GRP_SEL.size} 条`;
+}
+async function grpDeleteSelected() {
+  if (!GRP_SEL.size) { toast('先勾选要删除的消息'); return; }
+  if (!confirm(`删除选中的 ${GRP_SEL.size} 条群消息？此操作不可恢复`)) return;
+  const r = await api('/admin/api/group/messages/batch_delete', {json: {ids: [...GRP_SEL]}});
+  toast(`已删除 ${r.deleted || GRP_SEL.size} 条`);
+  GRP_SEL.clear();
+  loadGroupRecords(GRP_BEFORE);
+}
+function grpOlder(oldestId) { GRP_NAV.push(GRP_BEFORE); loadGroupRecords(oldestId); }
+function grpNewer() { const prev = GRP_NAV.length ? GRP_NAV.pop() : 0; loadGroupRecords(prev); }
+function grpEarliest() { GRP_NAV.push(GRP_BEFORE); loadGroupRecords(GRP_MIN || 1); }
+async function delGroupMsg(id) {
+  if (!confirm(`删除这条群消息（#${id}）？`)) return;
+  await api('/admin/api/group/messages/delete', {json: {id}});
+  GRP_SEL.delete(id);
+  toast('已删除');
+  loadGroupRecords(GRP_BEFORE);
+}
+async function clearGroupRec() {
+  const sel = document.getElementById('rec_group');
+  const gid = sel ? sel.value : '';
+  if (!gid) { toast('请先选择群聊'); return; }
+  if (!confirm('清空该群的全部消息？此操作不可恢复')) return;
+  await api('/admin/api/group/messages/clear', {json: {gid: parseInt(gid)}});
+  GRP_SEL.clear();
+  toast('已清空');
+  loadGroupRecords(0);
+}
+
+// ================= 世界（分组与广播） =================
+async function renderWorlds() {
+  if (!CHARS.length) await loadChars();
+  const d = await api('/admin/api/worlds');
+  const worlds = d.worlds || [];
+  const sd = await api('/admin/api/settings');
+  const s = Object.assign({}, sd.defaults, sd.settings || {});
+  const fmt = ts => new Date(ts * 1000).toLocaleString('zh-CN');
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="card">
+      <div class="row"><b>世界（角色分组）</b><span class="grow"></span>
+        <input id="world_new_name" placeholder="新世界名称，如：现代都市" style="width:220px">
+        <button onclick="createWorld()">创建世界</button>
+      </div>
+      <p class="hint">同一世界里的角色共享"世界动态"：她们说的话里提到同世界的其他角色时，会自动提炼并广播成共享事件；你也可以手动广播（如"周六下午你和沈念晚去了公园"）。所有同世界角色都会知道这些事，聊天时保持见闻一致，避免"一个说看见了、另一个说没看见"。</p>
+      <div class="row" style="margin-top:10px">
+        <label><input type="checkbox" id="s_world_rec" style="width:auto" ${Number(s.world_recognize_enabled ?? 1) !== 0 ? 'checked' : ''}> 启用自动识别广播（每条消息结合上下文识别公开事件）</label>
+        <span class="grow"></span>
+        <label class="f" style="margin:0 6px 0 0">注入条数/世界</label>
+        <input id="s_world_max" type="number" min="1" max="50" value="${s.world_context_max ?? 10}" style="width:80px">
+        <label class="f" style="margin:0 6px 0 10px">天数</label>
+        <input id="s_world_days" type="number" min="1" max="90" value="${s.world_context_days ?? 7}" style="width:80px">
+        <button onclick="saveWorldSettings()">保存</button>
+      </div>
+    </div>
+    ${worlds.map(w => `
+    <div class="card">
+      <div class="row">
+        <b>世界 #${w.id}</b>
+        <input id="world_name_${w.id}" value="${esc(w.name)}" style="width:220px">
+        <span class="grow"></span>
+        <button onclick="saveWorld(${w.id})">保存名称/成员</button>
+        <button class="red" onclick="deleteWorld(${w.id})">删除世界</button>
+      </div>
+      <div style="margin-top:8px">${CHARS.map(c => `<label style="margin-right:14px"><input type="checkbox" class="wmem_${w.id}" value="${c.id}" ${w.members.some(m => m.id == c.id) ? 'checked' : ''} style="width:auto"> ${esc(c.name)}</label>`).join('')}</div>
+      <div style="height:10px"></div>
+      <div class="row">
+        <input id="world_bc_${w.id}" placeholder="手动广播一条世界事件（所有成员都会知道）">
+        <button onclick="broadcastWorld(${w.id})">广播</button>
+      </div>
+      <div class="msg" style="margin-top:10px">${(w.events || []).length ? w.events.slice().reverse().map(e => `<div class="m"><span class="hint">[${fmt(e.ts)}] #${e.id}${e.source_cid ? ` · 来自${esc((CHARS.find(c => c.id == e.source_cid) || {}).name || '角色')}` : ''}</span> ${esc(e.content)} <button class="small red" onclick="delWorldEvent(${e.id})">删</button></div>`).join('') : '<span class="hint">（还没有世界动态）</span>'}</div>
+    </div>`).join('')}`;
+}
+async function createWorld() {
+  const name = (document.getElementById('world_new_name').value || '').trim();
+  if (!name) { toast('请输入世界名称'); return; }
+  await api('/admin/api/world/create', {json: {name, cids: []}});
+  toast('已创建，请在下方勾选成员并保存');
+  renderWorlds();
+}
+async function saveWorldSettings() {
+  const maxV = parseInt(document.getElementById('s_world_max').value, 10);
+  const dayV = parseInt(document.getElementById('s_world_days').value, 10);
+  const body = {settings: {
+    world_recognize_enabled: document.getElementById('s_world_rec').checked ? 1 : 0,
+    world_context_max: Math.max(1, Math.min(50, Number.isFinite(maxV) ? maxV : 10)),
+    world_context_days: Math.max(1, Math.min(90, Number.isFinite(dayV) ? dayV : 7)),
+  }};
+  await api('/admin/api/settings', {json: body});
+  toast('已保存（立即生效）');
+}
+async function saveWorld(id) {
+  const name = (document.getElementById('world_name_' + id).value || '').trim();
+  const cids = [...document.querySelectorAll('.wmem_' + id)].filter(c => c.checked).map(c => parseInt(c.value));
+  await api('/admin/api/world/settings', {json: {id, name, cids}});
+  toast(`已保存（${cids.length} 个成员，立即生效）`);
+  renderWorlds();
+}
+async function deleteWorld(id) {
+  if (!confirm('删除该世界？成员关系与世界动态都会删除（不影响角色本身）')) return;
+  await api('/admin/api/world/settings', {json: {id, delete: true}});
+  toast('已删除');
+  renderWorlds();
+}
+async function broadcastWorld(id) {
+  const el = document.getElementById('world_bc_' + id);
+  const content = ((el && el.value) || '').trim();
+  if (!content) { toast('请输入广播内容'); return; }
+  await api('/admin/api/world/broadcast', {json: {world_id: id, content}});
+  toast('已广播，同世界角色都会知道');
+  renderWorlds();
+}
+async function delWorldEvent(id) {
+  if (!confirm('删除这条世界动态？')) return;
+  await api('/admin/api/world/event/delete', {json: {id}});
+  toast('已删除');
+  renderWorlds();
+}
+async function exportRec(format) {
+  const cid = document.getElementById('rec_char').value;
+  // 直接用 fetch 取原始文本（api() 会把 JSON 解析成对象，导出会变成 [object Object]）
+  const r = await fetch(`${API}/admin/api/export?character_id=${cid}&format=${format}`, {
+    headers: TOKEN ? {'X-Admin-Token': TOKEN} : {},
+  });
+  if (r.status === 401) { logout(); return; }
+  if (!r.ok) { toast('导出失败（登录可能已过期）'); return; }
+  const text = await r.text();
+  const blob = new Blob([text], {type: format==='json'?'application/json':'text/plain'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `stories_${cid}_${Date.now()}.${format}`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+// ================= 朋友圈 =================
+async function renderMoments() {
+  const d = await api('/admin/api/moments?limit=100');
+  const ms = (d.moments || []).slice().reverse();
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="card">
+      <div class="row"><b>朋友圈管理</b><span class="grow"></span>
+        <button class="gray small" onclick="renderMoments()">刷新</button></div>
+      <div class="hint">共 ${ms.length} 条动态（新的在上）。可删除动态或单条评论；自动发帖与互动的开关在角色编辑页，风格提示词在「设置」页。</div>
+      <div style="height:8px"></div>
+      ${ms.map(m => `
+        <div class="msg" style="margin-bottom:10px">
+          <div class="row">
+            <b>${esc(m.name)}</b>
+            <span class="tag ${m.author === 'user' ? '' : 'ok'}">${m.author === 'user' ? '我发的' : '角色发的'}</span>
+            <span class="hint">#${m.id} · ${fmtTime(m.ts)} · ${esc(m.source || '')}</span>
+            <span class="grow"></span>
+            <button class="small red" onclick="delMoment(${m.id})">删除动态</button>
+          </div>
+          <div style="margin:6px 0;white-space:pre-wrap">${esc(m.content || '')}</div>
+          ${(m.images || []).map(u => `<img class="thumb" src="${esc(tokUrl(u))}" style="max-width:110px;max-height:110px;margin-right:4px">`).join('')}
+          <div class="hint">点赞：${(m.liked_by_user ? '我 ' : '') + ((m.like_names || []).join('、') || (m.liked_by_character ? '角色' : '')) || '无'}</div>
+          ${(m.comments || []).map(cm => `<div class="msg" style="margin-top:4px"><b>${cm.role === 'user' ? '我' : esc(cm.name || m.name)}</b>：${esc(cm.content)} <button class="small red" onclick="delMomentComment(${cm.id})">删</button></div>`).join('')}
+        </div>`).join('') || '<div class="hint">还没有朋友圈动态</div>'}
+    </div>`;
+}
+async function delMoment(id) {
+  if (!confirm(`删除动态 #${id}（含其评论）？`)) return;
+  await api('/admin/api/moments/delete', {json: {id}});
+  toast('已删除'); renderMoments();
+}
+async function delMomentComment(id) {
+  if (!confirm(`删除评论 #${id}？`)) return;
+  await api('/admin/api/moment_comments/delete', {json: {id}});
+  toast('已删除'); renderMoments();
+}
+
+// ================= 设置 / 日志 =================
+async function renderSettings() {
+  const d = await api('/admin/api/settings');
+  const s = Object.assign({}, d.defaults, d.settings || {});
+  const models = await loadModels();
+  const textModels = [
+    ...(models.chat || []).map((id) => ({
+      value: id,
+      label: id + (/deepseek/i.test(id) ? '（豆包·方舟托管）' : '（豆包）'),
+    })),
+    ...(models.deepseek || []).map((id) => ({ value: id, label: id + '（DeepSeek 官方）' })),
+  ];
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="card">
+      <b>AI 模型（下拉选择，保存后立即生效）</b>
+      <div class="grid2" style="margin-top:8px">
+        ${modelField('s_ark', '主对话模型', s.ark_model, textModels)}
+        ${modelField('s_ds', '备用模型', s.deepseek_model, textModels)}
+      </div>
+      <div class="grid3">
+        ${modelField('s_sum', '上下文压缩模型', s.summary_model, textModels)}
+        ${modelField('s_photo', '照片生成模型（Seedream）', s.photo_model, models.image)}
+        ${modelField('s_video', '视频生成模型（MiniMax）', s.video_model, models.video)}
+      </div>
+      <div class="grid2">
+        ${modelField('s_judge', '判断模型（拆分/提醒/搜索）', s.judge_model, textModels, '每次回复前的轻量判断（AI 拆分、提醒时机、是否需要联网）统一用这个模型，推荐 deepseek-flash')}
+      </div>
+      <p class="hint">共 ${textModels.length} 个文本模型：豆包/火山方舟 ${models.chat.length} 个（含方舟托管的 deepseek，标注「豆包·方舟托管」，走 Ark 接口）、DeepSeek 官方 ${models.deepseek.length} 个（标注「DeepSeek 官方」，走 DeepSeek 接口）；照片 ${models.image.length} 个、视频 ${models.video.length} 个；从下拉选择或选「自定义…」手动输入；主对话、备用、上下文压缩可任选，保存后自动按来源路由；照片走 Seedream，视频走 MiniMax</p>
+      <div style="height:10px"></div>
+      <button onclick="saveSettings()">保存设置</button>
+      <button class="gray" onclick="MODELS=null;renderSettings()">刷新模型列表</button>
+    </div>
+    <div class="card">
+      <b>图片转述（照片转文字）</b>
+      <p class="hint">「是否转述」是每个角色独立的开关：在角色编辑页勾选「图片转述」。开启的角色会先用「转述模型」把用户发来的图片转成文字再交给对话模型（适合纯文本模型）；关闭的角色直接把原图交给多模态对话模型。这里配置转述用的模型和提示词（所有开启转述的角色共用）。</p>
+      <div class="grid2" style="margin-top:8px">
+        ${modelField('s_imgdesc', '转述模型（需支持图片输入）', s.image_desc_model, textModels, '默认 deepseek-v4-flash-vision-exp（DeepSeek Flash 视觉版）；也可选豆包视觉模型；留空用默认')}
+      </div>
+      <label class="f">转述提示词</label>
+      <textarea id="s_imgdesc_prompt" style="min-height:90px">${esc(s.image_desc_prompt ?? '')}</textarea>
+      <div style="height:10px"></div>
+      <button onclick="saveSettings()">保存设置</button>
+    </div>
+    <div class="card">
+      <b>记忆库（聊天记录 → 可检索记忆）</b>
+      <p class="hint">聊天记录会自动入库为「可检索记忆」，回复时按相关性注入。
+      判定模型只丢弃<b>高置信无价值</b>的内容（纯寒暄/语气词），其余全部保留；判定失败一律保留。
+      检索是<b>叠加层</b>：近期上下文照旧完整保留，不会因为检索而丢掉连贯性。</p>
+      <div class="row" style="gap:14px;flex-wrap:wrap;margin-top:8px">
+        <label><input type="checkbox" id="s_mem_en" style="width:auto" ${Number(s.memory_enabled ?? 1) !== 0 ? 'checked' : ''}> 启用记忆库</label>
+        <label><input type="checkbox" id="s_mem_pro" style="width:auto" ${Number(s.memory_proactive_enabled ?? 1) !== 0 ? 'checked' : ''}> 主动回忆（用旧事开场）</label>
+        <label><input type="checkbox" id="s_mem_forget" style="width:auto" ${Number(s.memory_forget_enabled ?? 1) !== 0 ? 'checked' : ''}> 遗忘曲线（弱记忆淡出）</label>
+        <label><input type="checkbox" id="s_mem_qexp" style="width:auto" ${Number(s.memory_query_expand ?? 0) !== 0 ? 'checked' : ''}> 多查询扩展（召回更高，+1.5s）</label>
+      </div>
+      <div class="grid3" style="margin-top:8px">
+        <div><label class="f">私聊丢弃阈值（越高越保守）</label><input id="s_mem_p1" type="number" step="0.05" min="0.3" max="0.99" value="${s.memory_judge_p_single ?? 0.55}"></div>
+        <div><label class="f">群聊丢弃阈值（更激进）</label><input id="s_mem_p2" type="number" step="0.05" min="0.3" max="0.99" value="${s.memory_judge_p_group ?? 0.45}"></div>
+        <div><label class="f">召回条数（私聊+知识库）</label><input id="s_mem_topn" type="number" min="0" max="10" value="${s.memory_topn ?? 3}"></div>
+        <div><label class="f">群聊召回上限（群语境 +1）</label><input id="s_mem_gtopn" type="number" min="0" max="5" value="${s.memory_group_topn ?? 1}"></div>
+        <div><label class="f">时间衰减半衰期（天）</label><input id="s_mem_decay" type="number" min="1" max="3650" value="${s.memory_decay_days ?? 30}"></div>
+        <div><label class="f">每日入库上限（每范围）</label><input id="s_mem_daily" type="number" min="0" max="5000" value="${s.memory_daily_max ?? 500}"></div>
+        <div><label class="f">遗忘天数（未被想起）</label><input id="s_mem_fdays" type="number" min="7" max="3650" value="${s.memory_forget_days ?? 180}"></div>
+        <div><label class="f">主动回忆冷却（天）</label><input id="s_mem_pcool" type="number" min="1" max="365" value="${s.memory_proactive_cool_days ?? 7}"></div>
+        <div><label class="f">检索整体超时（毫秒）</label><input id="s_mem_tmo" type="number" min="300" max="15000" value="${s.memory_timeout_ms ?? 3000}"></div>
+      </div>
+      <div class="hint">改完可在左侧「记忆」页签查看规模与最近召回；「从头重建」只重置索引水位，已入库内容不会重复嵌入。</div>
+      <div style="height:10px"></div>
+      <button onclick="saveSettings()">保存设置</button>
+    </div>
+    <div class="card">
+      <b>运行参数</b>
+      <div class="grid3" style="margin-top:8px">
+        <div><label class="f">回复前等待（秒）</label><input id="s_reply" type="number" step="0.1" value="${s.reply_delay}"></div>
+        <div><label class="f">打字节奏系数（0.1~2）</label><input id="s_factor" type="number" step="0.1" value="${s.msg_delay_factor}"></div>
+        <div><label class="f">上下文条数</label><input id="s_hist" type="number" value="${s.max_history}"></div>
+      </div>
+      <div style="height:10px"></div>
+      <button onclick="saveSettings()">保存设置</button>
+    </div>
+    <div class="card">
+      <b>自动回复</b>
+      <p class="hint">聊天结束一段时间后，AI 结合当前时间与对话内容判断合适的联系时机（「晚上见」这类时间约定会按约定时段触发）；你一发消息就会取消待发闹铃；主动消息发出后不会连锁再发。<b>为控制频率：普通聊天默认 4~10 小时后再联系，并受"每日上限"约束</b>。</p>
+      <div class="row" style="margin-top:8px">
+        <label><input type="checkbox" id="s_wake_en" style="width:auto" ${Number(s.wake_enabled) !== 0 ? 'checked' : ''}> 启用自动回复（全局）</label>
+      </div>
+      <div class="grid2" style="margin-top:8px">
+        <div><label class="f">沉默倒计时（分钟）</label><input id="s_wake_silence" type="number" value="${s.wake_silence ?? 3}"><div class="hint">角色回复后，你超过这么久没说话才视为聊天结束并订闹铃</div></div>
+        <div><label class="f">时区偏移（小时）</label><input id="s_wake_tz" type="number" step="0.5" value="${s.wake_tz ?? 8}"><div class="hint">服务器为 UTC，中国填 8（影响时间约定与"现在时间"判断）</div></div>
+      </div>
+      <div class="grid2" style="margin-top:8px">
+        <div><label class="f">每日主动联系上限（次）</label><input id="s_wake_daily_max" type="number" min="0" max="5" value="${s.wake_daily_max ?? 1}"><div class="hint">达到上限后当天不再主动联系（<b>每个角色独立计算</b>；0 = 完全关闭主动消息；建议 1）</div></div>
+        <div></div>
+      </div>
+      <div style="margin-top:8px">
+        ${modelField('s_wakemodel', '时机判断模型（留空=用压缩模型）', s.wake_model, textModels, '判断"多久后主动联系"的轻量模型，推荐 DeepSeek Flash；联系间隔由 AI 结合语境自由决定，不设上下限')}
+      </div>
+      <div style="height:10px"></div>
+      <button onclick="saveSettings()">保存设置</button>
+    </div>
+    <div class="card">
+      <b>余额查询（AK/SK，小程序「余额」使用）</b>
+      <p class="hint">火山引擎 / 阿里云没有"API Key 查余额"的接口，需要用账号的访问密钥（AK/SK）查询，填一次永久生效：<br>
+      · 火山引擎：控制台右上角头像 → API 访问密钥，建议用子账号并授予「费用中心只读」权限；<br>
+      · 阿里云：控制台右上角头像 → AccessKey 管理，建议用 RAM 子账号并授予 AliyunBSSReadOnlyAccess。<br>
+      填好后小程序「余额」会自动显示这两家的实时余额；MiniMax 无公开余额接口（控制台查看）。</p>
+      <label class="f">密钥状态（不再回显明文）</label>
+      <div class="hint">火山引擎：${s.volc_ak_set ? ('已配置 · 来源 ' + (s.volc_ak_from || '-')) : '未配置'}
+        ｜ 阿里云：${s.aliyun_ak_set ? ('已配置 · 来源 ' + (s.aliyun_ak_from || '-')) : '未配置'}</div>
+      <div class="hint">AK/SK 与其它模型密钥一致，统一由服务器密钥文件（secrets.env）注入：<b>不入库、不回显</b>。
+        需要更换时，在服务器 secrets.env 里修改 <code>VOLC_AK/VOLC_SK/ALIYUN_AK/ALIYUN_SK</code> 后重建容器。</div>
+      <div style="height:10px"></div>
+      <button onclick="saveSettings()">保存设置</button>
+    </div>
+    <div class="card">
+      <b>对话一致性（承诺/立场记忆）</b>
+      <p class="hint">系统会自动从每轮对话抽取角色「答应过/拒绝过/约定过」的事，此后每次回复都强制注入，防止前后矛盾（前面答应后面反悔、前面拒绝后面又答应）。可通过下方开关整体启停，或自定义一致性要求。</p>
+      <div class="row" style="margin-top:8px">
+        <label><input type="checkbox" id="s_consist_en" style="width:auto" ${Number(s.consistency_enabled ?? 1) !== 0 ? 'checked' : ''}> 启用一致性要求</label>
+        <label><input type="checkbox" id="s_commit_auto" style="width:auto" ${Number(s.commit_extract_enabled ?? 1) !== 0 ? 'checked' : ''}> 自动提取承诺记忆（只记录明确的承诺/约定/底线；关闭后不再新增条目）</label>
+        <label><input type="checkbox" id="s_longmem_auto" style="width:auto" ${Number(s.long_memory_enabled ?? 1) !== 0 ? 'checked' : ''}> 自动提取重要记忆（重要事件/关系进展/偏好；关闭后不再新增条目）</label>
+      </div>
+      <label class="f">一致性要求提示词</label>
+      <textarea id="s_consist_prompt" style="min-height:130px">${esc(s.consistency_prompt ?? '')}</textarea>
+      <div style="height:10px"></div>
+      <button onclick="saveSettings()">保存设置</button>
+    </div>
+    <div class="card">
+      <b>核心保底段（拒答 / 出戏抑制）</b>
+      <p class="hint">整段注入每个角色系统提示词的静态块末尾，优先级最高：不许出戏、不许声明平台/政策/审核、拒绝视为故障。
+        命中拒答时系统还会把「再次强调」短段追加到 system 末尾换模型重试（尾部指令权重最高）。
+        清空文本框 = 回落到代码里的默认文案；关掉开关 = 整段不注入（出问题时一键停用）。</p>
+      <div class="row" style="margin-top:8px">
+        <label><input type="checkbox" id="s_core_guard_en" style="width:auto" ${Number(s.core_guard_enabled ?? 1) !== 0 ? 'checked' : ''}> 启用核心保底段</label>
+      </div>
+      <label class="f">保底段文案</label>
+      <textarea id="s_core_guard_prompt" style="min-height:200px">${esc(s.core_guard_prompt ?? '')}</textarea>
+      <div style="height:10px"></div>
+      <button onclick="saveSettings()">保存设置</button>
+    </div>
+    <div class="card">
+      <b>知识库检索</b>
+      <p class="hint">公共知识库在每个角色的检索结果中最多占几条（0 = 完全不用公共库；<b>对所有角色生效</b>）。相关性下限用于过滤低相关文档（0.30 为默认值）。</p>
+      <div class="row" style="margin-top:8px;gap:18px">
+        <label>公共库上限 <input type="number" id="s_kb_pub_max" style="width:70px" min="0" max="3" value="${Number(s.kb_public_max ?? 1)}"></label>
+        <label>相关性下限 <input type="number" id="s_kb_min_score" style="width:90px" min="0" max="1" step="0.05" value="${Number(s.kb_min_score ?? 0.3)}"></label>
+      </div>
+      <div style="height:10px"></div>
+      <button onclick="saveSettings()">保存设置</button>
+    </div>
+    <div class="card">
+      <b>智能分段</b>
+      <p class="hint">AI 把回复拆成 2~4 段按打字节奏逐条发送；短情感段（≤字数上限且含关键词）自动转语音（每天限额）。模型不再自主决定发语音，语音全部由本功能控制。</p>
+      <div class="row" style="margin-top:8px;gap:18px">
+        <label><input type="checkbox" id="s_seg_en" style="width:auto" ${Number(s.seg_enabled) !== 0 ? 'checked' : ''}> 启用智能分段</label>
+        <label><input type="checkbox" id="s_seg_voice" style="width:auto" ${Number(s.seg_voice_mix) !== 0 ? 'checked' : ''}> 段级语音混发</label>
+      </div>
+      <div class="grid3" style="margin-top:8px">
+        <div><label class="f">语音段字数上限</label><input id="s_seg_chars" type="number" value="${s.seg_voice_max_chars ?? 20}"></div>
+        <div><label class="f">每日语音上限（条）</label><input id="s_seg_limit" type="number" value="${s.seg_voice_daily_limit ?? 15}"></div>
+        <div><label class="f">语音关键词（逗号分隔）</label><input id="s_seg_kw" value="${esc(s.seg_voice_keywords ?? '')}"></div>
+      </div>
+      <div class="grid3" style="margin-top:8px">
+        <div><label class="f">触发分段的最短字数</label><input id="s_seg_min" type="number" value="${s.seg_min_length ?? 25}"></div>
+        <div><label class="f">最多分段数</label><input id="s_seg_maxn" type="number" value="${s.seg_max_segments ?? 4}"></div>
+        <div></div>
+      </div>
+      <label class="f">AI 拆分提示词（{text} 会替换为回复原文）</label>
+      <textarea id="s_seg_prompt" style="min-height:130px">${esc(s.seg_prompt ?? '')}</textarea>
+      <div style="height:10px"></div>
+      <button onclick="saveSettings()">保存设置</button>
+    </div>
+    <div class="card">
+      <b>提醒插件（reminder）</b>
+      <p class="hint">对在角色编辑页勾选了「提醒插件」的角色生效：AI 判断时机合适时会在回复中注入提醒任务，检测到提醒关键词自动计数（角色列表可看本周进度）。</p>
+      <p class="hint" style="color:#c0392b"><b>本仓库不附带任何提醒提示词与关键词，三项默认全部留空。</b>
+        留空时该功能自动停用（不会向模型注入任何指令）。需要此功能请自行填写下面的判断提示词、提醒提示词与关键词，
+        内容需符合你所在地区的法律与所使用模型服务的条款，责任由使用者自负。</p>
+      <div class="grid3" style="margin-top:8px">
+        <div><label class="f">提醒冷却（分钟）</label><input id="s_reminder_cd" type="number" value="${s.reminder_cooldown ?? 30}"></div>
+        <div><label class="f">判断重试间隔（分钟）</label><input id="s_reminder_retry" type="number" value="${s.reminder_retry ?? 15}"></div>
+        <div><label class="f">计数冷却（分钟）</label><input id="s_reminder_ccd" type="number" value="${s.reminder_count_cooldown ?? 60}"></div>
+      </div>
+      <div style="margin-top:8px"><label class="f">提醒关键词（逗号分隔）</label><input id="s_reminder_kw" value="${esc(s.reminder_keywords ?? '')}"></div>
+      <label class="f">判断提示词（占位符：{progress}/{target}/{days_since}/{time_desc}/{user_msg}）</label>
+      <textarea id="s_reminder_judge" style="min-height:150px">${esc(s.reminder_judge_prompt ?? '')}</textarea>
+      <label class="f">提醒提示词（占位符：{progress}/{target}/{examples}）</label>
+      <textarea id="s_reminder_prompt" style="min-height:130px">${esc(s.reminder_prompt ?? '')}</textarea>
+      <div style="height:10px"></div>
+      <button onclick="saveSettings()">保存设置</button>
+    </div>
+    <div class="card">
+      <b>联网搜索（anysearch）</b>
+      <p class="hint">回复前 AI 判断需要联网时自动搜索实时信息（天气/新闻/日期/热点/百科事实等）并注入回答。</p>
+      <div class="row" style="margin-top:8px">
+        <label><input type="checkbox" id="s_search_en" style="width:auto" ${Number(s.search_enabled) !== 0 ? 'checked' : ''}> 启用联网搜索</label>
+      </div>
+      <div class="grid2" style="margin-top:8px">
+        <div><label class="f">Anysearch API Key</label><input id="s_search_key" value="${esc(s.search_api_key ?? '')}"></div>
+        <div><label class="f">单次结果数（1~10）</label><input id="s_search_n" type="number" value="${s.search_max_results ?? 5}"></div>
+      </div>
+      <div style="height:10px"></div>
+      <button onclick="saveSettings()">保存设置</button>
+    </div>
+    <div class="card">
+      <b>朋友圈（moments）</b>
+      <p class="hint">开启「自动发朋友圈」的角色每天清晨（05:30 后）由 AI 结合最近聊天、承诺记忆、相处摘要与人设决定今天发不发、几点发、写什么方向；你发朋友圈时可以指定「谁能看/谁不能看」，看不到的角色完全不触发；能看到的角色会把这条动态记进主对话上下文，并各自评估择时点赞/评论（评估同样结合聊天记录、承诺与人设）。你评论角色的朋友圈时，按下方概率触发她回评。</p>
+      <label class="f">发帖风格提示词</label>
+      <input id="s_moment_post" value="${esc(s.moment_post_prompt ?? '')}">
+      <label class="f">评论风格提示词</label>
+      <input id="s_moment_comment" value="${esc(s.moment_comment_prompt ?? '')}">
+      <label class="f">回评提示词</label>
+      <input id="s_moment_reply" value="${esc(s.moment_reply_prompt ?? '')}">
+      <label class="f">评论触发回评概率（0~100 %）</label>
+      <input id="s_moment_chance" type="number" min="0" max="100" value="${s.moment_reply_chance ?? 80}">
+      <label class="f">互动延迟上限（分钟，点赞/评论最晚多久后触发）</label>
+      <input id="s_moment_delay" type="number" min="1" max="1440" value="${s.moment_react_delay_max ?? 720}">
+      <label class="f">每天自动发朋友圈条数上限（1~5，越多越活跃）</label>
+      <input id="s_moment_daily" type="number" min="1" max="5" value="${s.moment_daily_max ?? 2}">
+      <label><input type="checkbox" id="s_moment_like" style="width:auto" ${Number(s.moment_force_like ?? 1) !== 0 ? 'checked' : ''}> 至少点赞（角色没主动互动时也点个赞，避免"已读不回"）</label>
+      <div style="height:10px"></div>
+      <button onclick="saveSettings()">保存设置</button>
+    </div>
+    <div class="card">
+      <b>看一看（新闻）</b>
+      <p class="hint">每天 06:30 后自动抓取学术/体育/军事/政治/国际新闻。入库前会先用下面的模型清洗正文里的广告与推广（App 导流、二维码关注、网站导航等），并只收录"完整"内容（长正文或带可下载视频）；图片+一句话的薄新闻、纯广告条目会被丢弃。繁体新闻自动转简体。</p>
+      <label><input type="checkbox" id="s_news_en" style="width:auto" ${Number(s.news_enabled ?? 1) !== 0 ? 'checked' : ''}> 启用新闻（看一看）</label>
+      <label><input type="checkbox" id="s_news_clean" style="width:auto" ${Number(s.news_clean_enabled ?? 1) !== 0 ? 'checked' : ''}> 启用模型清洗（去掉正文里的广告/推广）</label>
+      <div style="margin-top:8px">
+        ${modelField('s_news_model', '新闻清洗模型（推荐便宜的 deepseek-flash）', s.news_clean_model, textModels, '入库前用它清理残留广告；只用便宜的轻量模型即可')}
+      </div>
+      <div style="height:10px"></div>
+      <button onclick="saveSettings()">保存设置</button>
+    </div>
+    <div class="card">
+      <b>群聊（group）</b>
+      <p class="hint">群聊里角色的行为规则：你发言后最多几人回复、群里安静多久后角色会主动开口、角色之间互相接话的上限。是否开口/接话由决策模型判定（不再用概率）。所有数值保存后立即生效。注意：群消息不会影响单聊的主动回复节奏。</p>
+      <label class="f">自动发言等待时间（秒，群里安静超过它才可能主动开口）</label>
+      <input id="s_group_idle" type="number" min="10" value="${s.group_auto_idle_min ?? 120}">
+      <label class="f">自动发言最小间隔（秒）</label>
+      <input id="s_group_interval" type="number" min="30" value="${s.group_auto_interval ?? 240}">
+      <label class="f">活跃窗口（小时；超过后视为"冷群"，转为"起新话题"，夜间 0:00-7:00 免打扰、每小时最多判定一次）</label>
+      <input id="s_group_window" type="number" min="1" max="48" value="${s.group_auto_window_hours ?? 6}">
+      <label class="f">每日自动消息上限（主动发言+互聊合计，条/群/天）</label>
+      <input id="s_group_daily" type="number" min="0" max="100" value="${s.group_auto_daily_limit ?? 15}">
+      <label class="f">每次互聊最多接几句（0~4，是否继续接由决策模型判定）</label>
+      <input id="s_group_chain_max" type="number" min="0" max="4" value="${s.group_chain_max ?? 2}">
+      <label class="f">你发言后最多几人回复（1~3）</label>
+      <input id="s_group_reply_max" type="number" min="1" max="3" value="${s.group_reply_max ?? 2}">
+      <div style="margin-top:8px">
+        ${modelField('s_group_model', '群聊接话模型（推荐 deepseek-flash 省钱）', s.group_model ?? 'deepseek-flash', textModels, '群里所有角色接话与互聊都用它（私聊不受影响）；想更聪明可换 pro，费用更高')}
+      </div>
+      <label class="f">注入到对话的群消息条数（每个群，1~200）</label>
+      <input id="s_group_ctx_max" type="number" min="1" max="200" value="${s.group_context_max ?? 30}">
+      <label class="f">注入消息的时间范围（小时，1~720）</label>
+      <input id="s_group_ctx_window" type="number" min="1" max="720" value="${s.group_context_window_hours ?? 72}">
+      <label class="f">最多注入几个群（1~10）</label>
+      <input id="s_group_ctx_groups" type="number" min="1" max="10" value="${s.group_context_max_groups ?? 3}">
+      <div style="height:10px"></div>
+      <button onclick="saveSettings()">保存设置</button>
+    </div>
+    <div class="card">
+      <div class="row"><b>运行日志</b><span class="grow"></span>
+        <button class="gray small" onclick="renderSettings()">刷新</button></div>
+      <div class="msg" style="margin-top:8px;white-space:pre-wrap;font-family:monospace;font-size:12px" id="log_box">加载中…</div>
+    </div>`;
+  const l = await api('/admin/api/logs?lines=300');
+  const box = document.getElementById('log_box');
+  if (box) box.textContent = (l.logs||[]).join('\n') || '(无日志)';
+}
+async function saveSettings() {
+  const intOr = (id, def) => { const v = parseInt(document.getElementById(id).value, 10); return Number.isFinite(v) ? v : def; };
+  const floatOr = (id, def) => { const v = parseFloat(document.getElementById(id).value); return Number.isFinite(v) ? v : def; };
+  const numOr = (id, def) => { const v = parseFloat(document.getElementById(id).value); return Number.isFinite(v) ? v : def; };
+  const body = {settings: {
+    reply_delay: numOr('s_reply', 1.2),
+    msg_delay_factor: numOr('s_factor', 1.0),
+    max_history: intOr('s_hist', 40),
+    ark_model: modelValue('s_ark'),
+    deepseek_model: modelValue('s_ds'),
+    summary_model: modelValue('s_sum'),
+    photo_model: modelValue('s_photo'),
+    video_model: modelValue('s_video'),
+    wake_enabled: document.getElementById('s_wake_en').checked ? 1 : 0,
+    wake_silence: intOr('s_wake_silence', 3),
+    wake_daily_max: Math.max(0, Math.min(5, intOr('s_wake_daily_max', 1))),
+    wake_tz: Number.isFinite(parseFloat(document.getElementById('s_wake_tz').value)) ? parseFloat(document.getElementById('s_wake_tz').value) : 8,
+    wake_model: modelValue('s_wakemodel'),
+    judge_model: modelValue('s_judge'),
+    seg_enabled: document.getElementById('s_seg_en').checked ? 1 : 0,
+    seg_voice_mix: document.getElementById('s_seg_voice').checked ? 1 : 0,
+    seg_voice_max_chars: intOr('s_seg_chars', 20),
+    seg_voice_daily_limit: intOr('s_seg_limit', 15),
+    seg_voice_keywords: document.getElementById('s_seg_kw').value.trim(),
+    seg_min_length: intOr('s_seg_min', 25),
+    seg_max_segments: intOr('s_seg_maxn', 4),
+    seg_prompt: document.getElementById('s_seg_prompt').value,
+    reminder_cooldown: intOr('s_reminder_cd', 30),
+    reminder_retry: intOr('s_reminder_retry', 15),
+    reminder_count_cooldown: intOr('s_reminder_ccd', 60),
+    reminder_keywords: document.getElementById('s_reminder_kw').value.trim(),
+    reminder_judge_prompt: document.getElementById('s_reminder_judge').value,
+    reminder_prompt: document.getElementById('s_reminder_prompt').value,
+    search_enabled: document.getElementById('s_search_en').checked ? 1 : 0,
+    search_api_key: document.getElementById('s_search_key').value.trim(),
+    search_max_results: intOr('s_search_n', 5),
+    moment_post_prompt: document.getElementById('s_moment_post').value.trim(),
+    moment_comment_prompt: document.getElementById('s_moment_comment').value.trim(),
+    moment_reply_prompt: document.getElementById('s_moment_reply').value.trim(),
+    moment_reply_chance: Math.max(0, Math.min(100, intOr('s_moment_chance', 80))),
+    moment_react_delay_max: Math.max(1, Math.min(1440, intOr('s_moment_delay', 720))),
+    moment_daily_max: Math.max(1, Math.min(5, intOr('s_moment_daily', 2))),
+    moment_force_like: document.getElementById('s_moment_like').checked ? 1 : 0,
+    news_clean_enabled: document.getElementById('s_news_clean').checked ? 1 : 0,
+    news_enabled: document.getElementById('s_news_en').checked ? 1 : 0,
+    news_clean_model: modelValue('s_news_model'),
+    group_auto_idle_min: Math.max(10, intOr('s_group_idle', 120)),
+    group_auto_interval: Math.max(30, intOr('s_group_interval', 240)),
+    group_auto_window_hours: Math.max(1, Math.min(48, intOr('s_group_window', 6))),
+    group_auto_daily_limit: Math.max(0, Math.min(100, intOr('s_group_daily', 15))),
+    group_chain_max: Math.max(0, Math.min(4, intOr('s_group_chain_max', 2))),
+    group_reply_max: Math.max(1, Math.min(3, intOr('s_group_reply_max', 2))),
+    group_model: modelValue('s_group_model'),
+    group_context_max: Math.max(1, Math.min(200, intOr('s_group_ctx_max', 30))),
+    group_context_window_hours: Math.max(1, Math.min(720, intOr('s_group_ctx_window', 72))),
+    group_context_max_groups: Math.max(1, Math.min(10, intOr('s_group_ctx_groups', 3))),
+    consistency_enabled: document.getElementById('s_consist_en').checked ? 1 : 0,
+    commit_extract_enabled: document.getElementById('s_commit_auto').checked ? 1 : 0,
+    long_memory_enabled: document.getElementById('s_longmem_auto').checked ? 1 : 0,
+    kb_public_max: Math.max(0, Math.min(3, intOr('s_kb_pub_max', 1))),
+    kb_min_score: Math.max(0, Math.min(1, parseFloat(document.getElementById('s_kb_min_score').value) || 0.3)),
+    consistency_prompt: document.getElementById('s_consist_prompt').value.trim(),
+    core_guard_enabled: document.getElementById('s_core_guard_en').checked ? 1 : 0,
+    core_guard_prompt: document.getElementById('s_core_guard_prompt').value.trim(),
+    image_desc_model: modelValue('s_imgdesc'),
+    image_desc_prompt: document.getElementById('s_imgdesc_prompt').value.trim(),
+    memory_enabled: document.getElementById('s_mem_en').checked ? 1 : 0,
+    memory_proactive_enabled: document.getElementById('s_mem_pro').checked ? 1 : 0,
+    memory_forget_enabled: document.getElementById('s_mem_forget').checked ? 1 : 0,
+    memory_query_expand: document.getElementById('s_mem_qexp').checked ? 1 : 0,
+    memory_judge_p_single: floatOr('s_mem_p1', 0.55),
+    memory_judge_p_group: floatOr('s_mem_p2', 0.45),
+    memory_topn: intOr('s_mem_topn', 3),
+    memory_group_topn: intOr('s_mem_gtopn', 1),
+    memory_decay_days: floatOr('s_mem_decay', 30),
+    memory_daily_max: intOr('s_mem_daily', 500),
+    memory_forget_days: intOr('s_mem_fdays', 180),
+    memory_proactive_cool_days: intOr('s_mem_pcool', 7),
+    memory_timeout_ms: intOr('s_mem_tmo', 3000),
+  }};
+  await api('/admin/api/settings', {json: body});
+  toast('设置已保存（立即生效）');
+}
+
+// ================= 记忆库（聊天记录 → 可检索记忆）=================
+let MEM_SCOPE = '';
+let MEM_PAGE = 0;
+let MEM_ITEMS = [];
+
+function _memId() { return parseInt((MEM_SCOPE.split('_')[1] || '0'), 10); }
+function _memIsGroup() { return MEM_SCOPE.indexOf('group_') === 0; }
+function _memPayload(mid) { return _memIsGroup() ? { gid: _memId(), mid: mid } : { cid: _memId(), mid: mid }; }
+function _memQ() { const el = document.getElementById('mem_q'); return el ? el.value : ''; }
+
+async function renderMemory() {
+  const chars = await loadChars();
+  let groups = [];
+  try { groups = (await api('/admin/api/groups')).groups || []; } catch (e) {}
+  const d = await api('/admin/api/memory/overview');
+  const scopes = d.scopes || {};
+  const cfg = d.config || {};
+  const recs = d.recalls || [];
+  const nameOf = {};
+  chars.forEach(c => { nameOf['char_' + c.id] = (c.name || ('#' + c.id)) + '（私聊）'; });
+  groups.forEach(g => { nameOf['group_' + g.id] = (g.name || ('群' + g.id)) + '（群聊）'; });
+  const keys = Object.keys(scopes).sort();
+  if (keys.indexOf(MEM_SCOPE) < 0) MEM_SCOPE = keys.length ? keys[0] : '';
+  let total = 0, totalMb = 0;
+  keys.forEach(k => { total += (scopes[k].count || 0); totalMb += (scopes[k].mb || 0); });
+  const main = document.getElementById('main');
+  main.innerHTML = `
+    <div class="card">
+      <div class="row"><b>记忆库总览</b><span class="grow"></span>
+        <button onclick="memReindex(0)">补齐索引</button>
+        <button onclick="memReindex(1)">从头重建</button>
+        <button onclick="renderMemory()">刷新</button>
+      </div>
+      <p class="hint">聊天记录自动入库为「可检索记忆」：判定模型只丢弃高置信无价值内容，其余全部保留；
+      检索为<b>叠加层</b>（不替换近期上下文），按「私聊+知识库 TopN / 群聊 ≤1（群语境 ≤2）」注入，
+      任何环节失败都会退回纯历史模式。</p>
+      <div class="row" style="gap:18px;flex-wrap:wrap">
+        <div>记忆总条数：<b>${total}</b></div>
+        <div>向量体积：<b>${totalMb.toFixed(1)} MB</b></div>
+        <div>总开关：<b>${cfg.enabled ? '开启' : '关闭'}</b></div>
+        <div>丢弃阈值：私聊 <b>${cfg.judge_p_single}</b> / 群聊 <b>${cfg.judge_p_group}</b></div>
+        <div>召回上限：私聊+知识库 <b>${cfg.topn}</b> / 群聊 <b>${cfg.group_topn}</b>（群语境 ${cfg.group_topn_relax}）</div>
+        <div>时间衰减半衰期：<b>${cfg.decay_days}</b> 天</div>
+      </div>
+      <div style="height:10px"></div>
+      <table><thead><tr><th>范围</th><th>条数</th><th>已淡出</th><th>置顶</th><th>体积</th><th>索引水位</th><th>操作</th></tr></thead><tbody>
+      ${keys.map(k => `<tr>
+        <td>${esc(nameOf[k] || k)}</td><td>${scopes[k].count}</td><td>${scopes[k].dormant}</td>
+        <td>${scopes[k].pinned}</td><td>${scopes[k].mb} MB</td><td>#${scopes[k].last_mid}</td>
+        <td><button onclick="memOpen('${k}')">查看记忆</button></td></tr>`).join('')}
+      </tbody></table>
+    </div>
+    <div class="card" id="mem_list_card" style="display:none"></div>
+    <div class="card">
+      <b>最近检索命中（最近 30 次）</b>
+      <p class="hint">排查「她为什么不记得」用：这里能看到每次回复实际召回了哪些记忆、来自私聊还是群聊、耗时多少。</p>
+      <table><thead><tr><th>时间</th><th>角色</th><th>查询</th><th>召回内容</th><th>耗时</th></tr></thead><tbody>
+      ${recs.map(r => `<tr>
+        <td>${fmtTime(r.ts)}</td><td>${esc(nameOf['char_' + r.cid] || ('#' + r.cid))}</td>
+        <td style="max-width:200px">${esc(r.query)}</td>
+        <td>${(r.items || []).map(i => `[${i.date || ''}] ${esc((i.content || '').slice(0, 40))}（${i.source === 'group' ? '群聊' : '私聊'}）`).join('<br>') || '（无召回）'}</td>
+        <td>${r.latency_ms} ms</td></tr>`).join('')}
+      </tbody></table>
+    </div>`;
+  if (MEM_SCOPE) memRenderList('');
+}
+
+async function memOpen(scope) { MEM_SCOPE = scope; MEM_PAGE = 0; await memRenderList(''); }
+
+async function memRenderList(q) {
+  if (!MEM_SCOPE) return;
+  const id = _memId();
+  const p = _memIsGroup() ? ('gid=' + id) : ('cid=' + id);
+  const d = await api(`/admin/api/memories?${p}&limit=50&offset=${MEM_PAGE * 50}&q=${encodeURIComponent(q || '')}`);
+  MEM_ITEMS = d.items || [];
+  const card = document.getElementById('mem_list_card');
+  card.style.display = '';
+  card.innerHTML = `
+    <div class="row"><b>记忆列表 · ${esc(MEM_SCOPE)}（共 ${d.total} 条）</b><span class="grow"></span>
+      <input id="mem_q" placeholder="搜索内容" style="width:180px" value="${esc(q || '')}">
+      <button onclick="MEM_PAGE=0;memRenderList(_memQ())">搜索</button>
+      <button onclick="MEM_PAGE=Math.max(0,MEM_PAGE-1);memRenderList(_memQ())">上一页</button>
+      <button onclick="MEM_PAGE++;memRenderList(_memQ())">下一页</button>
+    </div>
+    <table><thead><tr><th>时间</th><th>谁说的</th><th>内容</th><th>被想起</th><th>状态</th><th>操作</th></tr></thead><tbody>
+    ${MEM_ITEMS.map(it => `<tr>
+      <td>${fmtTime(it.ts)}</td><td>${it.role === 'user' ? '对方' : '角色'}</td>
+      <td style="max-width:420px">${esc(it.content)}</td>
+      <td>${it.recall_n} 次</td>
+      <td>${it.pin ? '📌 置顶 ' : ''}${it.dormant ? '已淡出' : ''}</td>
+      <td>
+        <button onclick="memEdit(${it.mid})">编辑</button>
+        <button onclick="memPin(${it.mid},${it.pin ? 0 : 1})">${it.pin ? '取消置顶' : '置顶'}</button>
+        <button onclick="memDorm(${it.mid},${it.dormant ? 0 : 1})">${it.dormant ? '恢复' : '淡出'}</button>
+        <button onclick="memDel(${it.mid})">删除</button>
+      </td></tr>`).join('')}
+    </tbody></table>`;
+}
+
+async function memPin(mid, v) {
+  const b = _memPayload(mid); b.pin = v;
+  await api('/admin/api/memories/update', { json: b });
+  toast(v ? '已置顶（不会被遗忘）' : '已取消置顶');
+  memRenderList(_memQ());
+}
+
+async function memDorm(mid, v) {
+  const b = _memPayload(mid); b.dormant = v;
+  await api('/admin/api/memories/update', { json: b });
+  toast(v ? '已淡出（不参与检索，可恢复）' : '已恢复参与检索');
+  memRenderList(_memQ());
+}
+
+async function memDel(mid) {
+  if (!confirm('删除这条记忆？（不可恢复，向量会一并移除）')) return;
+  await api('/admin/api/memories/delete', { json: _memPayload(mid) });
+  toast('已删除');
+  memRenderList(_memQ());
+}
+
+function memEdit(mid) {
+  const it = MEM_ITEMS.find(x => x.mid === mid);
+  const cur = it ? it.content : '';
+  const v = prompt('修改记忆内容（保存后会自动重新嵌入）', cur);
+  if (v === null) return;
+  const b = _memPayload(mid); b.content = v;
+  api('/admin/api/memories/update', { json: b }).then(() => {
+    toast('已保存');
+    memRenderList(_memQ());
+  }).catch(() => toast('保存失败'));
+}
+
+async function memReindex(rebuild) {
+  if (!MEM_SCOPE) { toast('先在总览里点「查看记忆」选一个范围'); return; }
+  if (rebuild && !confirm('从头重建会重新扫描该范围的全部历史消息（已入库内容不会重复嵌入）。继续？')) return;
+  const b = _memIsGroup() ? { gid: _memId(), rebuild: rebuild } : { cid: _memId(), rebuild: rebuild };
+  await api('/admin/api/memory/reindex', { json: b });
+  toast('已在后台开始处理（可稍后刷新查看）');
+}
+
+// boot
+if (TOKEN) {
+  api('/admin/api/characters').then(() => showApp()).catch(() => { TOKEN=''; localStorage.removeItem('stories_token'); });
+}
+</script>
+</body>
+</html>
