@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 运行时通过名称查找的资源（flutter_local_notifications 的 ic_stat_stories），
+     静态分析看不到引用，必须显式 keep，否则 release 构建会被资源收缩删除，
+     导致通知初始化失败、前台服务渠道缺失并闪退 -->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_stat_stories" />

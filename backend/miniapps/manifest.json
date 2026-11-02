@@ -1,0 +1,10 @@
+{
+  "apps": [
+    {"id": "weather", "name": "天气", "icon": "🌤", "color": "#2782D7", "desc": "双城天气 · 下雨她会提醒你"},
+    {"id": "ledger", "name": "记账本", "icon": "💰", "color": "#07C160", "desc": "随手记一笔 · 她会看月汇总"},
+    {"id": "todo", "name": "待办清单", "icon": "✅", "color": "#FA9D3B", "desc": "今天的任务 · 她会夸你会催你"},
+    {"id": "anniversary", "name": "纪念日", "icon": "📅", "color": "#FA5151", "desc": "重要日子倒计时 · 她会记得"},
+    {"id": "radio", "name": "电台", "icon": "📻", "color": "#5B6BF5", "desc": "外部电台 · 陪你在线收听"},
+    {"id": "balance", "name": "余额", "icon": "💳", "color": "#8E44AD", "desc": "各模型平台余额 · 及时充值"}
+  ]
+}
