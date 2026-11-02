@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>记账本</title>
+<link rel="stylesheet" href="/miniapps/common/style.css">
+</head>
+<body>
+<div class="page">
+  <div class="card">
+    <h3>记一笔</h3>
+    <div class="row">
+      <select id="type"><option value="out">支出</option><option value="in">收入</option></select>
+      <input id="amount" type="number" inputmode="decimal" placeholder="金额" min="0" step="0.01">
+    </div>
+    <div class="row">
+      <select id="cat">
+        <option>餐饮</option><option>交通</option><option>购物</option><option>娱乐</option>
+        <option>日用</option><option>住房</option><option>其他</option>
+      </select>
+      <input id="note" placeholder="备注（可选）" maxlength="30">
+    </div>
+    <div class="row"><button class="grow" onclick="add()">保存这笔</button></div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div class="card" id="sumCard"><h3>本月汇总</h3><div id="sum" class="muted">加载中…</div></div>
+
+  <div class="card">
+    <h3>最近记录</h3>
+    <ul class="list" id="list"><li class="muted">加载中…</li></ul>
+  </div>
+</div>
+<script src="/miniapps/common/sdk.js"></script>
+<script>
+var items = [];
+
+function fmt(n) { return '¥' + (Math.round(n * 100) / 100).toFixed(2).replace(/\.00$/, ''); }
+
+function save() { return MINI.kvSet('ledger', 'items', items.slice(-500)); }
+
+function render() {
+  var now = new Date();
+  var ym = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+  var out = 0, inc = 0;
+  items.forEach(function (it) {
+    var d = new Date(it.ts * 1000);
+    var key = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+    if (key !== ym) return;
+    if (it.type === 'in') inc += Number(it.amount) || 0; else out += Number(it.amount) || 0;
+  });
+  document.getElementById('sum').innerHTML =
+    '支出 <b>' + fmt(out) + '</b> ｜ 收入 <b>' + fmt(inc) + '</b> ｜ 结余 <b>' + fmt(inc - out) + '</b>';
+  var rows = items.slice(-30).reverse().map(function (it) {
+    var d = new Date(it.ts * 1000);
+    var t = d.getMonth() + 1 + '月' + d.getDate() + '日';
+    var sign = it.type === 'in' ? '+' : '-';
+    return '<li><div class="grow">' + MINI.esc(it.cat) + (it.note ? ' · ' + MINI.esc(it.note) : '') +
+      '<div class="sub">' + t + '</div></div><div>' + sign + fmt(Number(it.amount) || 0) + '</div>' +
+      '<button class="ghost mini" onclick="del(' + it.id + ')">删</button></li>';
+  });
+  document.getElementById('list').innerHTML = rows.length ? rows.join('') :
+    '<li class="empt">还没有记录，记第一笔吧</li>';
+}
+
+function add() {
+  var amount = parseFloat(document.getElementById('amount').value);
+  if (!(amount > 0)) { document.getElementById('err').textContent = '请输入正确金额'; return; }
+  document.getElementById('err').textContent = '';
+  var it = {
+    id: Date.now(),
+    type: document.getElementById('type').value,
+    amount: amount,
+    cat: document.getElementById('cat').value,
+    note: document.getElementById('note').value.trim(),
+    ts: Math.floor(Date.now() / 1000)
+  };
+  items.push(it);
+  save().then(function () {
+    MINI.event('ledger', '记账：' + (it.type === 'in' ? '收入' : '支出') + ' ' + fmt(it.amount) +
+      '（' + it.cat + (it.note ? '·' + it.note : '') + '）');
+  });
+  document.getElementById('amount').value = '';
+  document.getElementById('note').value = '';
+  render();
+}
+
+function del(id) {
+  items = items.filter(function (x) { return x.id !== id; });
+  save().then(render);
+}
+
+MINI.kvGet('ledger', 'items').then(function (r) {
+  items = Array.isArray(r.value) ? r.value : [];
+  render();
+}).catch(function () { document.getElementById('list').innerHTML = '<li class="empt">加载失败</li>'; });
+</script>
+</body>
+</html>

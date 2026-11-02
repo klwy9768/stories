@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>电台</title>
+<link rel="stylesheet" href="/miniapps/common/style.css">
+</head>
+<body>
+<div class="page">
+  <div class="card">
+    <h3>正在播放</h3>
+    <div class="row"><div class="grow" id="now" class="muted">未播放</div>
+      <button class="ghost mini" onclick="stop()">停止</button></div>
+    <div class="row" style="margin-top:10px">
+      <span class="sub">音量</span>
+      <input id="vol" type="range" min="0" max="100" value="80" style="flex:1"
+             oninput="document.getElementById('audio').volume=this.value/100">
+    </div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div class="card">
+    <h3>电台列表</h3>
+    <ul class="list" id="list"><li class="empt">加载中…</li></ul>
+  </div>
+
+  <div class="card">
+    <h3>自定义流地址</h3>
+    <div class="row">
+      <input id="cname" placeholder="名称" maxlength="20" style="flex:0 0 34%">
+      <input id="curl" placeholder="http(s)://…（mp3 / m3u8）">
+      <button onclick="addCustom()">添加</button>
+    </div>
+    <div class="muted" style="margin-top:8px">支持公开的网络电台直链或 m3u8；播放失败换个台试试</div>
+  </div>
+</div>
+<audio id="audio" preload="none"></audio>
+<script src="/miniapps/common/sdk.js"></script>
+<script>
+var PRESETS = [
+  { name: '中国之声', url: 'http://ngcdn001.cnr.cn/live/zgzs/index.m3u8' },
+  { name: '经济之声', url: 'http://ngcdn002.cnr.cn/live/jjzs/index.m3u8' },
+  { name: '音乐之声', url: 'http://ngcdn003.cnr.cn/live/yyzs/index.m3u8' },
+  { name: 'CRI 环球资讯', url: 'http://sk.cri.cn/887.m3u8' },
+  { name: 'SomaFM Groove Salad', url: 'https://ice1.somafm.com/groovesalad-128-mp3' },
+  { name: 'Radio Paradise', url: 'https://stream.radioparadise.com/mp3-192' }
+];
+var custom = [];
+var current = null;
+
+function all() { return PRESETS.concat(custom); }
+
+function render() {
+  document.getElementById('list').innerHTML = all().map(function (s, i) {
+    var isC = i >= PRESETS.length;
+    return '<li><div class="grow">' + MINI.esc(s.name) + '</div>' +
+      (isC ? '<button class="ghost mini" onclick="delCustom(' + (i - PRESETS.length) + ')">删</button>' : '') +
+      '<button class="mini" onclick="playIdx(' + i + ')">播放</button></li>';
+  }).join('');
+}
+
+function playIdx(i) {
+  var s = all()[i];
+  if (!s) return;
+  var a = document.getElementById('audio');
+  document.getElementById('err').textContent = '';
+  a.src = s.url;
+  a.play().then(function () {
+    current = s.name;
+    document.getElementById('now').textContent = '🔊 ' + s.name;
+    logListen(s.name);
+  }).catch(function () {
+    document.getElementById('err').textContent = '播放失败：' + s.name + '（换个台或检查网络）';
+    document.getElementById('now').textContent = '未播放';
+  });
+}
+
+function logListen(name) {
+  var key = 'lastListen';
+  MINI.kvGet('radio', key).then(function (r) {
+    var last = r.value || {};
+    var now = Date.now();
+    if (last.name === name && now - (last.ts || 0) < 30 * 60 * 1000) return;
+    MINI.event('radio', '在听电台：' + name);
+    MINI.kvSet('radio', key, { name: name, ts: now });
+  });
+}
+
+function stop() {
+  var a = document.getElementById('audio');
+  a.pause();
+  a.removeAttribute('src');
+  a.load();
+  document.getElementById('now').textContent = '未播放';
+}
+
+function addCustom() {
+  var name = document.getElementById('cname').value.trim();
+  var url = document.getElementById('curl').value.trim();
+  if (!name || !/^https?:\/\//.test(url)) {
+    document.getElementById('err').textContent = '名称和合法地址都要填';
+    return;
+  }
+  document.getElementById('err').textContent = '';
+  custom.push({ name: name, url: url });
+  MINI.kvSet('radio', 'custom', custom);
+  document.getElementById('cname').value = '';
+  document.getElementById('curl').value = '';
+  render();
+}
+
+function delCustom(i) {
+  custom.splice(i, 1);
+  MINI.kvSet('radio', 'custom', custom).then(render);
+}
+
+var a = document.getElementById('audio');
+a.addEventListener('error', function () {
+  if (a.src) document.getElementById('err').textContent = '播放中断，换一个台试试';
+});
+
+MINI.kvGet('radio', 'custom').then(function (r) {
+  custom = Array.isArray(r.value) ? r.value : [];
+  render();
+}).catch(function () { render(); });
+</script>
+</body>
+</html>
