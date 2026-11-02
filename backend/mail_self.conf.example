@@ -1,0 +1,16 @@
+# Stories 邮件通知配置模板
+#
+# 用法：复制本文件到 <STORIES_DATA_DIR>/mail_self.conf，填入自己的发件邮箱与授权码。
+# 该文件已被 .gitignore 排除，不要提交真实配置。
+#
+# SMTP_PASS 和 TO 留空时，邮件功能自动停用，不会尝试发信。
+
+SMTP_HOST=smtp.qq.com
+SMTP_PORT=465
+SMTP_USER=your-email@example.com
+
+# 邮箱授权码 / 应用专用密码（留空 = 不启用）
+SMTP_PASS=
+
+# 收件人，多个用英文逗号分隔（留空 = 不启用）
+TO=

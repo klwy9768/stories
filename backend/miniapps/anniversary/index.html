@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>纪念日</title>
+<link rel="stylesheet" href="/miniapps/common/style.css">
+</head>
+<body>
+<div class="page">
+  <div class="card">
+    <h3>添加纪念日</h3>
+    <div class="row">
+      <input id="name" placeholder="名称（如：相识纪念日）" maxlength="20">
+    </div>
+    <div class="row">
+      <input id="date" type="date">
+      <select id="owner"><option value="0">通用（所有角色）</option></select>
+    </div>
+    <div class="row">
+      <input id="note" placeholder="备注（可选）" maxlength="30">
+      <button onclick="add()">添加</button>
+    </div>
+    <div class="muted" style="margin-top:8px">选「某个角色」→ 只有她知道并会提起；选「通用」→ 所有角色都记得</div>
+    <div class="err" id="err"></div>
+  </div>
+  <div class="card">
+    <h3>全部纪念日</h3>
+    <ul class="list" id="list"><li class="empt">加载中…</li></ul>
+  </div>
+</div>
+<script src="/miniapps/common/sdk.js"></script>
+<script>
+var items = [];
+var chars = [];
+var charName = {};
+
+function save() { return MINI.kvSet('anniversary', 'items', items.slice(-100)); }
+
+function ownerLabel(it) {
+  var cid = Number(it.cid || 0);
+  return cid ? (charName[cid] || '角色') : '通用';
+}
+
+function nextOf(ds) {
+  var d = new Date(ds + 'T00:00:00');
+  var now = new Date(); now.setHours(0, 0, 0, 0);
+  var t = new Date(now.getFullYear(), d.getMonth(), d.getDate());
+  if (t < now) t = new Date(now.getFullYear() + 1, d.getMonth(), d.getDate());
+  return t;
+}
+
+function render() {
+  var now = new Date(); now.setHours(0, 0, 0, 0);
+  var rows = items.map(function (it) {
+    var t = nextOf(it.date);
+    var days = Math.round((t - now) / 86400000);
+    var label = days === 0 ? '<b style="color:#FA5151">就是今天！</b>' : '还有 <b>' + days + '</b> 天';
+    var d0 = new Date(it.date + 'T00:00:00');
+    var years = t.getFullYear() - d0.getFullYear();
+    var extra = '';
+    if (days === 0 && years > 0) extra = ' · ' + years + ' 周年';
+    else if (days === 0) extra = ' · 第 ' + (Math.round((now - d0) / 86400000) + 1) + ' 天';
+    var tag = '<span class="pill">' + MINI.esc(ownerLabel(it)) + '</span>';
+    return { it: it, days: days, html: '<li><div class="grow">' + MINI.esc(it.name) + tag +
+      '<div class="sub">' + (t.getMonth() + 1) + '月' + t.getDate() + '日' + extra +
+      (it.note ? ' · ' + MINI.esc(it.note) : '') + '</div></div><div>' + label + '</div>' +
+      '<button class="ghost mini" onclick="del(' + it.id + ')">删</button></li>' };
+  }).sort(function (a, b) { return a.days - b.days; });
+  document.getElementById('list').innerHTML = rows.map(function (x) { return x.html; }).join('') ||
+    '<li class="empt">还没有纪念日，添加一个吧</li>';
+}
+
+function add() {
+  var name = document.getElementById('name').value.trim();
+  var date = document.getElementById('date').value;
+  if (!name || !date) { document.getElementById('err').textContent = '名称和日期都要填'; return; }
+  document.getElementById('err').textContent = '';
+  var cid = Number(document.getElementById('owner').value || 0);
+  var it = {
+    id: Date.now(), name: name, date: date, cid: cid,
+    note: document.getElementById('note').value.trim()
+  };
+  items.push(it);
+  var d = new Date(date + 'T00:00:00');
+  save().then(function () {
+    var who = cid ? ('和' + (charName[cid] || '角色') + '的') : '通用的';
+    MINI.event('anniversary', '添加了' + who + '纪念日：' + name +
+      '（' + (d.getMonth() + 1) + '月' + d.getDate() + '日）', cid);
+  });
+  document.getElementById('name').value = '';
+  document.getElementById('note').value = '';
+  render();
+}
+
+function del(id) {
+  items = items.filter(function (x) { return x.id !== id; });
+  save().then(render);
+}
+
+function notifyToday() {
+  var now = new Date();
+  var day = now.toISOString().slice(0, 10);
+  var todayItems = items.filter(function (it) {
+    var t = nextOf(it.date);
+    var n = new Date(); n.setHours(0, 0, 0, 0);
+    return Math.round((t - n) / 86400000) === 0;
+  });
+  if (!todayItems.length) return;
+  MINI.kvGet('anniversary', 'lastNotify').then(function (r) {
+    var last = r.value || {};
+    var ids = todayItems.map(function (x) { return x.id; }).join(',');
+    if (last.day === day && last.ids === ids) return;
+    todayItems.forEach(function (it) {
+      var cid = Number(it.cid || 0);
+      var who = cid ? ('和' + (charName[cid] || '角色') + '的') : '通用的';
+      MINI.event('anniversary', '今天是' + who + '纪念日：' + it.name, cid);
+    });
+    MINI.kvSet('anniversary', 'lastNotify', { day: day, ids: ids });
+  });
+}
+
+function boot() {
+  MINI.api('/api/mini/chars').then(function (d) {
+    chars = d.characters || [];
+    var sel = document.getElementById('owner');
+    chars.forEach(function (c) {
+      charName[c.id] = c.name;
+      var o = document.createElement('option');
+      o.value = c.id;
+      o.textContent = c.name + ' 专属';
+      sel.appendChild(o);
+    });
+  }).catch(function () {}).then(function () {
+    return MINI.kvGet('anniversary', 'items');
+  }).then(function (r) {
+    items = Array.isArray(r.value) ? r.value : [];
+    render();
+    notifyToday();
+  }).catch(function () {
+    document.getElementById('list').innerHTML = '<li class="empt">加载失败</li>';
+  });
+}
+boot();
+</script>
+</body>
+</html>

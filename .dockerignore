@@ -1,0 +1,9 @@
+# 构建上下文排除：测试与缓存不进镜像
+backend/test_*.py
+backend/_test_*
+backend/**/__pycache__/
+backend/**/*.pyc
+backend/data/
+backend/secrets.local.json
+*.log
+Stories.apk

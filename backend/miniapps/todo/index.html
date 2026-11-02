@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>待办清单</title>
+<link rel="stylesheet" href="/miniapps/common/style.css">
+</head>
+<body>
+<div class="page">
+  <div class="card">
+    <h3>添加待办</h3>
+    <div class="row">
+      <input id="text" placeholder="要做什么？" maxlength="60" onkeydown="if(event.key==='Enter')add()">
+      <button onclick="add()">添加</button>
+    </div>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div class="card">
+    <h3>未完成 <span class="pill" id="cnt">0</span></h3>
+    <ul class="list" id="open"><li class="empt">加载中…</li></ul>
+  </div>
+
+  <div class="card">
+    <h3>已完成</h3>
+    <ul class="list" id="closed"><li class="empt">暂无</li></ul>
+  </div>
+
+  <div class="muted center">你的待办 TA 能看到：完成会夸你，拖太久会催你</div>
+</div>
+<script src="/miniapps/common/sdk.js"></script>
+<script>
+var items = [];
+function save() { return MINI.kvSet('todo', 'items', items.slice(-300)); }
+
+function render() {
+  var open = items.filter(function (x) { return !x.done; });
+  var closed = items.filter(function (x) { return x.done; });
+  document.getElementById('cnt').textContent = open.length;
+  document.getElementById('open').innerHTML = open.map(function (it) {
+    return '<li><input type="checkbox" style="flex:none;width:20px;height:20px" onclick="toggle(' + it.id + ')">' +
+      '<div class="grow">' + MINI.esc(it.text) + '</div>' +
+      '<button class="ghost mini" onclick="del(' + it.id + ')">删</button></li>';
+  }).join('') || '<li class="empt">太棒了，没有待办！</li>';
+  document.getElementById('closed').innerHTML = closed.slice(0, 20).reverse().map(function (it) {
+    return '<li><input type="checkbox" checked disabled style="flex:none;width:20px;height:20px">' +
+      '<div class="grow done">' + MINI.esc(it.text) + '</div>' +
+      '<button class="ghost mini" onclick="del(' + it.id + ')">删</button></li>';
+  }).join('') || '<li class="empt">还没有完成的任务</li>';
+}
+
+function add() {
+  var el = document.getElementById('text');
+  var t = el.value.trim();
+  if (!t) { document.getElementById('err').textContent = '写点内容吧'; return; }
+  document.getElementById('err').textContent = '';
+  items.push({ id: Date.now(), text: t, done: false, ts: Math.floor(Date.now() / 1000) });
+  el.value = '';
+  save().then(function () { MINI.event('todo', '新增待办：' + t); });
+  render();
+}
+
+function toggle(id) {
+  var it = items.filter(function (x) { return x.id === id; })[0];
+  if (!it) return;
+  it.done = !it.done;
+  save().then(function () {
+    if (it.done) MINI.event('todo', '完成了待办：' + it.text);
+  });
+  render();
+}
+
+function del(id) {
+  items = items.filter(function (x) { return x.id !== id; });
+  save().then(render);
+}
+
+MINI.kvGet('todo', 'items').then(function (r) {
+  items = Array.isArray(r.value) ? r.value : [];
+  render();
+}).catch(function () { document.getElementById('open').innerHTML = '<li class="empt">加载失败</li>'; });
+</script>
+</body>
+</html>

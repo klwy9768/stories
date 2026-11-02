@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>天气</title>
+<link rel="stylesheet" href="/miniapps/common/style.css">
+</head>
+<body>
+<div class="page">
+  <div class="card">
+    <h3>我的城市</h3>
+    <div class="row">
+      <input id="me" placeholder="如：青岛">
+      <button onclick="saveMe()">保存</button>
+    </div>
+    <div class="muted" style="margin-top:8px">所有角色都会知道你那边的天气，下雨会提醒你带伞</div>
+  </div>
+  <div id="cards"></div>
+
+  <div class="muted center" style="margin:14px 0 6px">角色所在城市（各自不同，她们知道自己那边的天气）</div>
+  <div id="herCards"></div>
+  <div class="err" id="err"></div>
+</div>
+<script src="/miniapps/common/sdk.js"></script>
+<script>
+var chars = [];                        // [{id, name}]
+var cities = { me: '', chars: {} };    // chars: {cid: 城市}
+var weatherCache = {};                 // city -> 天气数据
+
+function cityOf(cid) { return (cities.chars || {})[String(cid)] || ''; }
+
+function weatherHtml(city) {
+  if (!city) return '<div class="empt">还没设置城市</div>';
+  var d = weatherCache[city];
+  if (!d) return '<div class="empt">加载中…</div>';
+  if (!d.ok) return '<div class="empt">查不到「' + MINI.esc(city) + '」的天气，换个名字试试</div>';
+  var days = (d.days || []).map(function (x) {
+    return '<div class="row"><div class="grow">' + MINI.esc(x.date.slice(5)) + ' ' + MINI.esc(x.text) +
+      '</div><div>' + Math.round(x.min) + '~' + Math.round(x.max) + '℃</div></div>';
+  }).join('');
+  return '<div class="row"><div class="big">' + Math.round(d.temp) + '℃</div>' +
+    '<div class="grow"></div><div>' + MINI.esc(d.text) + '</div></div>' +
+    '<div style="margin-top:8px">' + days + '</div>';
+}
+
+function loadWeather(city) {
+  if (!city || weatherCache[city] !== undefined) return;
+  weatherCache[city] = null; // 占位
+  MINI.weather(city).then(function (d) {
+    weatherCache[city] = d;
+    renderWeather();
+  }).catch(function () {
+    weatherCache[city] = { ok: false };
+    renderWeather();
+    document.getElementById('err').textContent = '天气加载失败，稍后再试';
+  });
+}
+
+function renderWeather() {
+  document.getElementById('w_me').innerHTML = weatherHtml(cities.me);
+  loadWeather(cities.me);
+  chars.forEach(function (c) {
+    var el = document.getElementById('w_' + c.id);
+    if (el) el.innerHTML = weatherHtml(cityOf(c.id));
+    loadWeather(cityOf(c.id));
+  });
+}
+
+function buildCharCards() {
+  document.getElementById('herCards').innerHTML = chars.map(function (c) {
+    return '<div class="card"><h3>' + MINI.esc(c.name) + ' 的城市</h3>' +
+      '<div class="row"><input id="c_' + c.id + '" value="' + MINI.esc(cityOf(c.id)) + '" placeholder="如：上海">' +
+      '<button onclick="saveCity(' + c.id + ')">保存</button></div>' +
+      '<div id="w_' + c.id + '" style="margin-top:10px"></div></div>';
+  }).join('') || '<div class="card"><div class="empt">还没有角色</div></div>';
+}
+
+function saveMe() {
+  cities.me = document.getElementById('me').value.trim();
+  MINI.kvSet('weather', 'cities', cities).then(function () {
+    MINI.event('weather', '把我的城市设为 ' + (cities.me || '未设置'), 0);
+    weatherCache = {};
+    renderWeather();
+  });
+}
+
+function saveCity(cid) {
+  var name = '';
+  chars.forEach(function (c) { if (c.id === cid) name = c.name; });
+  var v = document.getElementById('c_' + cid).value.trim();
+  cities.chars = cities.chars || {};
+  cities.chars[String(cid)] = v;
+  MINI.kvSet('weather', 'cities', cities).then(function () {
+    MINI.event('weather', '把「' + name + '」的城市设为 ' + (v || '未设置'), cid);
+    weatherCache = {};
+    renderWeather();
+  });
+}
+
+function boot() {
+  MINI.api('/api/mini/chars').then(function (d) {
+    chars = (d.characters || []).map(function (c) { return { id: c.id, name: c.name }; });
+  }).catch(function () {}).then(function () {
+    return MINI.kvGet('weather', 'cities');
+  }).then(function (r) {
+    var v = r.value || {};
+    cities = { me: v.me || '', chars: v.chars || {} };
+    document.getElementById('me').value = cities.me;
+    buildCharCards();
+    renderWeather();
+  }).catch(function () {
+    document.getElementById('err').textContent = '加载失败，请重试';
+  });
+}
+document.getElementById('cards').innerHTML = '<div class="card"><h3>我的天气</h3><div id="w_me" class="empt">加载中…</div></div>';
+boot();
+</script>
+</body>
+</html>

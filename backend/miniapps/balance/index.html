@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>余额</title>
+<link rel="stylesheet" href="/miniapps/common/style.css">
+</head>
+<body>
+<div class="page">
+  <div class="row" style="margin:6px 2px 10px">
+    <div class="grow muted" id="ts"></div>
+    <button class="ghost mini" onclick="load(true)">刷新</button>
+  </div>
+  <div id="list"><div class="card"><div class="empt">加载中…</div></div></div>
+  <div class="muted center" style="margin-top:6px">余额实时查询仅 DeepSeek 支持；其他平台点按钮进控制台查看/充值</div>
+  <div class="err" id="err"></div>
+</div>
+<script src="/miniapps/common/sdk.js"></script>
+<script>
+function esc(s) { return MINI.esc(s); }
+
+function card(p) {
+  var head = '<h3>' + esc(p.name) + '</h3>';
+  var ft = p.fetched_at
+    ? '<div class="muted" style="margin-top:4px;font-size:12px">数据获取于 ' +
+      new Date(p.fetched_at * 1000).toLocaleTimeString('zh-CN', { hour12: false }) + '</div>'
+    : '';
+  if (p.ok) {
+    var total = parseFloat(p.total || '0');
+    var low = total < 10;
+    var color = low ? '#FA5151' : '#07C160';
+    return '<div class="card">' + head +
+      '<div class="row"><div class="big" style="color:' + color + '">¥' + esc(p.total) + '</div>' +
+      '<div class="grow"></div><span class="pill">' + (low ? '建议充值' : '正常') + '</span></div>' +
+      (p.detail ? '<div class="muted" style="margin-top:6px">' + esc(p.detail) + '</div>' : '') +
+      (p.available === false ? '<div class="err">账户当前不可用，请检查欠费</div>' : '') +
+      '<div class="row" style="margin-top:10px"><a href="' + p.console + '">' +
+      '<button class="ghost mini">去充值</button></a></div>' + ft + '</div>';
+  }
+  return '<div class="card">' + head +
+    '<div class="muted">' + esc(p.error || '暂无数据') + '</div>' +
+    (p.hint ? '<div class="muted" style="margin-top:4px;color:#576B95">' + esc(p.hint) + '</div>' : '') +
+    '<div class="row" style="margin-top:10px"><a href="' + p.console + '">' +
+    '<button class="ghost mini">打开控制台</button></a></div>' + ft + '</div>';
+}
+
+function load(force) {
+  document.getElementById('err').textContent = '';
+  MINI.api('/api/mini/balance' + (force ? '?force=1' : '')).then(function (d) {
+    var ps = d.providers || [];
+    document.getElementById('list').innerHTML = ps.map(card).join('') ||
+      '<div class="card"><div class="empt">没有已配置的平台</div></div>';
+    var t = new Date((d.now || Date.now() / 1000) * 1000);
+    document.getElementById('ts').textContent = '页面刷新于 ' +
+      t.toLocaleString('zh-CN', { hour12: false });
+  }).catch(function () {
+    document.getElementById('err').textContent = '加载失败，请检查网络';
+  });
+}
+load();
+</script>
+</body>
+</html>

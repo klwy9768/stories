@@ -1,0 +1,42 @@
+﻿# 数据与媒体（按目录/类型排除，不误伤图标资源）
+backend/data/
+backend/_test_*/
+media/
+uploads/
+*.db
+*.db-wal
+*.db-shm
+*.log
+*.apk
+*.mp3
+*.mp4
+
+# 密钥与本地配置
+secrets.env
+secrets.local.json
+secrets.json
+.stories_secrets.json
+.env
+*.env
+mail_self.conf
+mail-self.conf
+*.jks
+*.keystore
+key.properties
+local.properties
+*.pem
+*.key
+*.crt
+*.p12
+
+# 构建产物与缓存
+build/
+.dart_tool/
+.flutter-plugins-dependencies
+.gradle/
+__pycache__/
+*.pyc
+*.iml
+.idea/
+*.bak
+*.bak-*
