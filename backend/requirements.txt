@@ -1,9 +1,9 @@
-fastapi==0.141.1
-uvicorn==0.52.4
-pydantic==2.13.5
-python-multipart==0.0.32
+fastapi==0.162.0
+uvicorn==0.54.0
+pydantic==2.14.3
+python-multipart==0.0.33
 opencc-python-reimplemented==0.1.7
 # 记忆检索：向量存储与余弦计算（base64 float32 + numpy）
-numpy==2.3.4
+numpy==2.5.4
 # 测试用（fastapi.testclient 底层依赖 httpx）
 httpx==0.28.1
