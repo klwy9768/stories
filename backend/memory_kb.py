@@ -1,6 +1,6 @@
-# -*- coding: utf-8 -*-
 # Copyright (c) 2026 刘晨宇 <https://github.com/klwy9768/stories>
 # SPDX-License-Identifier: MIT
+# -*- coding: utf-8 -*-
 """记忆库：把聊天记录自动索引为「可检索记忆」，并在回复前检索注入。
 
 与 knowledge.py 的分工：
@@ -160,6 +160,78 @@ def _bigrams(text: str) -> set:
     return {t[i:i + 2] for i in range(len(t) - 1)}
 
 
+_TERM_SPLIT = re.compile(r"[\s,，。.!！?？、;；:：/\\|]+")
+
+
+def _term_grams(text: str) -> list:
+    """把查询拆成词，再各自切 bigram。用于"按词平均覆盖率"打分。"""
+    terms = [x for x in _TERM_SPLIT.split(str(text or "")) if x]
+    if not terms:
+        terms = [str(text or "")]
+    out = []
+    for x in terms:
+        g = _bigrams(x)
+        if g:
+            out.append(g)
+    return out
+
+
+def _kw_score_terms(q_terms: list, g: set) -> float:
+    """按词平均覆盖率（0~1）：每个词各算覆盖率再取平均。
+
+    - 单词查询："小林" → 1.0
+    - 多词查询："小林 生日" → 只命中人名 0.5，两者都中 1.0（能区分相关度）
+    """
+    if not q_terms or not g:
+        return 0.0
+    best = 0.0
+    for terms in q_terms:
+        if not terms:
+            continue
+        total = 0.0
+        for tg in terms:
+            inter = len(tg & g)
+            if inter:
+                total += inter / float(len(tg))
+        avg = total / float(len(terms))
+        if avg > best:
+            best = avg
+    return best
+
+
+def _kw_score(q_grams: list, g: set) -> float:
+    """关键词查询覆盖率（0~1）：只看查询被覆盖多少，不因记忆变长而被稀释。
+
+    旧实现除以 sqrt(len(q)*len(mem))：1200 字记忆里命中人名只有 0.01，
+    导致"长记忆 + 专名"这条最该起作用的兜底路径形同不存在。
+    """
+    if not q_grams or not g:
+        return 0.0
+    best = 0.0
+    for qg in q_grams:
+        if not qg:
+            continue
+        inter = len(qg & g)
+        if inter:
+            cov = inter / float(len(qg))
+            if cov > best:
+                best = cov
+    return best
+
+
+_index_locks = {}
+_index_locks_guard = threading.Lock()
+
+
+def _index_lock(scope: str):
+    with _index_locks_guard:
+        lk = _index_locks.get(scope)
+        if lk is None:
+            lk = threading.Lock()
+            _index_locks[scope] = lk
+        return lk
+
+
 def _build_entry(scope: str, items: list) -> dict:
     """构造缓存条目：条目列表 + 归一化矩阵 + bigram 索引"""
     mat = None
@@ -270,12 +342,11 @@ _FILLER_WORDS = (
     "谢谢", "晚安", "早安", "中午好", "晚上好", "emmm", "ok", "OK",
 )
 _FILLER_CHARS = set("嗯哦喔啊哈呵嘿喂行哇呀吧呢6")
-_FILLER_PUNCT = re.compile(r"[\s，。！？~～、,.!?…:：;；（）()\[\]【】\-—_]")
+_FILLER_PUNCT = re.compile(r"[\s，。！？~～、,.!?…:：;；（）()\[\]【】\-—__]")
 
 
 def _is_filler(text: str) -> bool:
-    """纯寒暄/语气词/数字 6/单字重复 → 不值得入库。
-    用线性字符串判断代替带嵌套量词的正则，避免 ReDoS。"""
+    """纯寒暄/语气词/数字 6/单字重复 → 不值得入库。用线性字符串判断代替带嵌套量词的正则，避免 ReDoS。"""
     t = _FILLER_PUNCT.sub("", str(text or ""))
     if not t:
         return True
@@ -330,8 +401,29 @@ def _items_of_scope(scope: str) -> list:
     return list(_load(scope)["items"])
 
 
+def _evict(items: list) -> list:
+    """容量收敛：按「最旧且召回最少」淘汰到上限；pin 永不淘汰。"""
+    if len(items) <= MAX_ITEMS_PER_SCOPE:
+        return items
+    pinned = [it for it in items if int(it.get("pin") or 0)]
+    rest = [it for it in items if not int(it.get("pin") or 0)]
+    drop = len(items) - MAX_ITEMS_PER_SCOPE
+    if drop > 0:
+        rest.sort(key=lambda x: (int(x.get("recall_n") or 0), float(x.get("ts") or 0)))
+        rest = rest[drop:]
+    return sorted(pinned + rest, key=lambda x: (float(x.get("ts") or 0), int(x.get("mid") or 0)))
+
+
 def index_scope(scope: str, cid: int = 0, gid: int = 0, is_group: bool = False,
                 max_batch: int = 200, respect_daily: bool = True) -> dict:
+    """增量索引（同 scope 串行）：避免"读条目→加新→落盘"并发时后写覆盖先写。"""
+    with _index_lock(scope):
+        return _index_scope_locked(scope, cid=cid, gid=gid, is_group=is_group,
+                                   max_batch=max_batch, respect_daily=respect_daily)
+
+
+def _index_scope_locked(scope: str, cid: int = 0, gid: int = 0, is_group: bool = False,
+                        max_batch: int = 200, respect_daily: bool = True) -> dict:
     """增量索引：处理水位之后的新消息。
 
     respect_daily=True 时受 memory_daily_max 限制（日常 tick 用）；
@@ -369,6 +461,11 @@ def index_scope(scope: str, cid: int = 0, gid: int = 0, is_group: bool = False,
             "WHERE character_id=? AND id>? AND content<>'' ORDER BY id LIMIT ?",
             (int(cid), int(last), int(max_batch))).fetchall()
     if not rows:
+        # 没有新消息：顺便做一次容量收敛（上限可能被调小，或历史已超限）
+        items = _items_of_scope(scope)
+        if len(items) > MAX_ITEMS_PER_SCOPE:
+            if _save(scope, _evict(items)):
+                _log("[memory] 容量收敛 %s：%d → %d 条" % (scope, len(items), MAX_ITEMS_PER_SCOPE))
         return stat
     items = _items_of_scope(scope)
     seen_mid = {int(it.get("mid") or 0) for it in items}
@@ -410,7 +507,7 @@ def index_scope(scope: str, cid: int = 0, gid: int = 0, is_group: bool = False,
             db.mem_index_set(scope, stat["last_id"])
         return stat
 
-    vecs = None
+    fail_mid = 0
     try:
         import knowledge
         for i in range(0, len(new_items), EMBED_BATCH):
@@ -422,22 +519,32 @@ def index_scope(scope: str, cid: int = 0, gid: int = 0, is_group: bool = False,
                     break
                 _time.sleep(1.2 * (attempt + 1))
             if not got:
-                _log("[memory] 嵌入批次失败（%d 条），本轮跳过，下轮补" % len(batch), level="WARNING")
-                continue
+                # 关键：失败时不能推进水位，否则这批消息永久丢失（服务恢复也补不回来）
+                fail_mid = int(batch[0].get("mid") or 0)
+                _log("[memory] 嵌入批次失败（%d 条，自 mid=%d 起），本轮不推进水位，下轮重试"
+                     % (len(batch), fail_mid), level="WARNING")
+                break
             for it, v in zip(batch, got):
                 it["vec_b64"] = _vec_pack(v)
-            if vecs is None:
-                vecs = True
     except Exception as e:
+        if new_items:
+            fail_mid = int(new_items[0].get("mid") or 0)
         _log("[memory] 嵌入异常: %s" % e, level="WARNING")
 
     merged = [it for it in items if it.get("vec_b64") or it.get("vector")] + \
              [it for it in new_items if it.get("vec_b64")]
     merged.sort(key=lambda x: (float(x.get("ts") or 0), int(x.get("mid") or 0)))
-    if len(merged) > MAX_ITEMS_PER_SCOPE:
-        merged = merged[-MAX_ITEMS_PER_SCOPE:]
+    merged = _evict(merged)
     if _save(scope, merged):
         stat["added"] = sum(1 for it in new_items if it.get("vec_b64"))
+        if fail_mid:
+            # 水位只推进到失败点之前：失败消息及之后的重扫（已成功的不会重复入库）
+            ok_last = last
+            for r in rows:
+                if int(r["id"]) >= fail_mid:
+                    break
+                ok_last = int(r["id"])
+            stat["last_id"] = ok_last
         db.mem_index_set(scope, stat["last_id"])
         if respect_daily and stat["added"]:
             try:
@@ -508,8 +615,12 @@ def _decay(ts: float, half_life_days: float) -> float:
         return 1.0
 
 
-def _score_scope(ent: dict, q_vecs: list, q_grams: list, cfg: dict) -> list:
-    """对单个范围打分：向量余弦（numpy 优先）× 时间衰减，并与关键词分数取较大者"""
+def _score_scope(ent: dict, q_vecs: list, q_grams: list, cfg: dict, q_terms: list = None) -> list:
+    """对单个范围打分：向量余弦（numpy 优先）与关键词分数取较大者。
+
+    返回的每个候选带 rel（原始相关度）、decay（时间衰减系数）、score（rel×(0.7+0.3d)）。
+    时间衰减只在这里乘一次，final 排序阶段不再重复乘。
+    """
     out = []
     items = ent["items"]
     if not items:
@@ -533,7 +644,7 @@ def _score_scope(ent: dict, q_vecs: list, q_grams: list, cfg: dict) -> list:
                         scores[i] = float(s[i])
             except Exception:
                 pass
-    else:
+    elif q_vecs:
         # 纯 Python 回退
         for i, it in enumerate(items):
             v = _item_vec(it)
@@ -547,31 +658,27 @@ def _score_scope(ent: dict, q_vecs: list, q_grams: list, cfg: dict) -> list:
                 if na and nb:
                     best = max(best, num / (na * nb))
             scores[i] = best
-    # 关键词（bigram）分数：专名/人名的兜底
+    # 关键词（bigram）：专名/人名兜底。
+    # 用「查询覆盖率」归一（_kw_score），不再除以 sqrt(len(mem))，长记忆里命中人名也能拿到高分。
     grams = ent["grams"]
     for i in range(len(items)):
-        kw = 0.0
         g = grams[i] if i < len(grams) else set()
-        if g:
-            for qg in q_grams:
-                if not qg:
-                    continue
-                inter = len(qg & g)
-                if inter:
-                    kw = max(kw, inter / ((len(qg) ** 0.5) * (len(g) ** 0.5) + 1e-9))
+        kw = _kw_score_terms(q_terms, g) if q_terms else 0.0
+        if kw > 0:
+            kw *= 0.55  # 与向量分量级对齐：强命中可压过弱向量，但不会无脑压过强向量
         if kw > scores[i]:
             scores[i] = kw
     for i, it in enumerate(items):
         if int(it.get("dormant") or 0):
             continue
         d = _decay(it.get("ts") or 0, cfg["decay_days"])
-        eff = scores[i] * (0.7 + 0.3 * d)
+        rel = scores[i]
+        eff = rel * (0.7 + 0.3 * d)
         if eff <= 0:
             continue
-        out.append({"item": it, "score": eff, "decay": d})
+        out.append({"item": it, "rel": rel, "score": eff, "decay": d})
     out.sort(key=lambda x: -x["score"])
     return out
-
 
 def retrieve(cid: int, query_text: str, recent_texts: list = None,
              gids: list = None, same_group_only: bool = True) -> dict:
@@ -583,7 +690,9 @@ def retrieve(cid: int, query_text: str, recent_texts: list = None,
     """
     t0 = _time.time()
     cfg = _cfg()
-    out = {"items": [], "latency_ms": 0, "queries": [], "ok": False}
+    # 时间预算从入口开始算：embedding 也必须在这笔预算里，而不是先花 12s 再开始计时
+    deadline = t0 + (cfg["timeout_ms"] / 1000.0)
+    out = {"items": [], "latency_ms": 0, "queries": [], "ok": False, "mode": ""}
     if not cfg["enabled"]:
         return out
     text = str(query_text or "").strip()
@@ -592,19 +701,27 @@ def retrieve(cid: int, query_text: str, recent_texts: list = None,
     try:
         queries = _expand_queries(text, recent_texts or [], cfg)
         out["queries"] = queries
+        q_grams = [_bigrams(q) for q in queries]
+        q_terms = [_term_grams(q) for q in queries]
+        budget = max(0.8, deadline - _time.time())
+        q_vecs = None
         try:
             import knowledge
-            q_vecs = knowledge._embed(queries, timeout=12)
+            # 走带失败冷却的入口：服务挂掉时立刻降级，不再每条回复白等 12 秒
+            q_vecs = knowledge.embed_queries(queries, timeout=min(12.0, budget))
         except Exception:
             q_vecs = None
+        out["mode"] = "vector" if q_vecs else "keyword"
         if not q_vecs:
-            out["latency_ms"] = int((_time.time() - t0) * 1000)
-            return out
-        q_grams = [_bigrams(q) for q in queries]
+            _log("[memory] embedding 不可用（冷却中或失败），本轮回退关键词检索", level="WARNING")
+
+        kw_mode = q_vecs is None
+        char_thr = min(cfg["threshold"], 0.15) if kw_mode else cfg["threshold"]
+        group_thr = min(cfg["group_threshold"], 0.25) if kw_mode else cfg["group_threshold"]
 
         char_ent = _load(scope_of_char(cid))
-        cands = _score_scope(char_ent, q_vecs, q_grams, cfg)
-        cands = [c for c in cands if c["score"] >= cfg["threshold"]][:12]
+        cands = _score_scope(char_ent, q_vecs, q_grams, cfg, q_terms)
+        cands = [c for c in cands if c["score"] >= char_thr][:12]
         for c in cands:
             c["source"] = "character"
 
@@ -612,8 +729,8 @@ def retrieve(cid: int, query_text: str, recent_texts: list = None,
         if same_group_only:
             for gid in (gids or [])[:5]:
                 ge = _load(scope_of_group(gid))
-                gs = _score_scope(ge, q_vecs, q_grams, cfg)
-                gs = [c for c in gs if c["score"] >= cfg["group_threshold"]][:4]
+                gs = _score_scope(ge, q_vecs, q_grams, cfg, q_terms)
+                gs = [c for c in gs if c["score"] >= group_thr][:4]
                 for c in gs:
                     c["source"] = "group"
                     c["gid"] = int(gid)
@@ -629,7 +746,6 @@ def retrieve(cid: int, query_text: str, recent_texts: list = None,
 
         # 重排（候选太少时跳过：本地余弦已够准，省一次网络往返）
         # 同时受"整体时间预算"约束：剩余时间不足 1.2s 就跳过重排，保证不拖慢整条回复
-        deadline = t0 + (cfg["timeout_ms"] / 1000.0)
         docs = [c["item"].get("content") or "" for c in pool]
         ranked = None
         if len(pool) >= int(cfg["rerank_min"]) and (_time.time() + 1.2) < deadline:
@@ -648,7 +764,8 @@ def retrieve(cid: int, query_text: str, recent_texts: list = None,
                     continue
         for c in pool:
             base = c.get("rr")
-            c["final"] = (base if base is not None else c["score"]) * (0.7 + 0.3 * c["decay"])
+            # 只乘一次衰减：rerank 分或原始相关度二选一；score 已含衰减，不能再乘
+            c["final"] = (base if base is not None else c.get("rel", c["score"])) * (0.7 + 0.3 * c["decay"])
 
         pool.sort(key=lambda x: -x["final"])
         pick, group_used = [], 0
